@@ -1,0 +1,187 @@
+import os
+import itertools
+import json
+from jinja2 import Template
+from tqdm.notebook import tqdm  # make sure tqdm is imported
+
+def write_templates(parameter_values, base_values, template, dontwrite=False, adjust_dependent_params_fn=None,
+                   omit_params=None,
+                   decimals=3):
+    """
+    Write templates for all combinations, with support for dependent parameters.
+    
+    `parameter_values`: Dictionary of parameters and their values
+    `base_values`: Dictionary of base values to include in each config
+    `template`: Jinja2 template
+    `dontwrite`: Flag to skip actual file writing
+    `adjust_dependent_params_fn`: Function for adjusting dependent parameters (optional)
+    `omit_params`: Set or list of parameters to exclude from folder name
+    """
+
+    def format_value(v, decimals=decimals):
+        if isinstance(v, float):
+            format_str = f"{{:.{decimals}f}}"
+            return format_str.format(v).rstrip('0').rstrip('.')  # Avoid .0 and overprecision
+        return str(v)
+
+    param_keys = list(parameter_values.keys())
+    combinations = list(itertools.product(*parameter_values.values()))
+    print(len(combinations))
+
+    if not dontwrite:
+        for values in tqdm(combinations):
+            param_combination = dict(zip(param_keys, values))
+
+            if adjust_dependent_params_fn:
+                param_combination = adjust_dependent_params_fn(param_combination)
+
+            params = {**base_values, **param_combination}
+
+            # Construct dir name with proper formatting
+            dir_name = "run_" + "_".join(
+                f"{k}{format_value(v)}"
+                for k, v in param_combination.items()
+                if not omit_params or k not in omit_params
+            )
+
+            os.makedirs(dir_name, exist_ok=True)
+            os.makedirs(os.path.join(dir_name, "runfiles"), exist_ok=True)
+
+            config_output = template.render(params)
+            with open(os.path.join(dir_name, "runfiles", "config.sh"), "w") as f:
+                f.write(config_output)
+            with open(os.path.join(dir_name, "runfiles", "parameters.json"), "w") as json_file:
+                json.dump(params, json_file, indent=4)
+
+    return combinations, param_keys
+
+import shutil
+def copy_reaction_directories(source_dir, base_target_dir, param_keys, combinations):
+    """Copies reaction directories based on parameter combinations."""
+    for values in tqdm(combinations):
+        params = dict(zip(param_keys, values))  # Create dictionary of parameters
+
+        # Generate directory name dynamically
+        dir_name = os.path.join(base_target_dir, "run_" + "_".join(f"{k}{v}" for k, v in params.items()), "runfiles/Reactions_rdis/")
+        
+        # Use shutil for efficient copying
+        shutil.copytree(source_dir, dir_name, dirs_exist_ok=True)
+    
+    #print(f"All directories copied successfully to {base_target_dir}")
+
+
+
+def generate_triangular_grid(min_coord, max_coord, sidelength):
+    """Generate a triangular grid of points."""
+    coordinates = []
+    y = min_coord
+    row = 0
+    while y <= max_coord:
+        x_start = min_coord if row % 2 == 0 else min_coord + (sidelength / 2)
+        x = x_start
+        while x <= max_coord:
+            coordinates.append((x, y))
+            x += sidelength
+        y += (math.sqrt(3) / 2) * sidelength
+        row += 1
+    return coordinates
+
+def check_min_distance(new_x, new_y, atom_table, min_dist):
+    """Ensure new coordinates are at least min_dist away from existing atoms."""
+    for entry in atom_table:
+        existing_x, existing_y = entry[3], entry[4]
+        distance = math.sqrt((new_x - existing_x) ** 2 + (new_y - existing_y) ** 2)
+        if distance < min_dist:
+            return False
+    return True
+
+def generate_configuration(Lx, n_synthases, run_dir, initial_synth_ptype=6, zpos=0.5, 
+                           m=1, m_process=1, min_dist=1.3, sidelength=8, m_diffu=1,
+                          yboxsize=None, n_atomtypes_=None):
+    """Generate the configuration file and save it to the given directory."""
+    MIN_COORD = -Lx
+    MAX_COORD = Lx
+    DIVI_ZCOORD = zpos
+    
+    # Generate triangular grid
+    triangular_grid = generate_triangular_grid(MIN_COORD, MAX_COORD, sidelength)
+    
+    # Initial atom entries
+    atom_table = [
+        [1, 1, 2, -0.5, 0.0, 0.0],
+        [2, 1, 3, 0.5, 0.0, 0.0],
+        [3, 9, 4, 0.0, -0.5, -2.0],
+        [4, 9, 4, 0.0, 0.5, -2.0],
+        [5, 2, initial_synth_ptype, 0.0, 0.0, DIVI_ZCOORD]
+    ]
+    
+    # Generate additional synthase atoms
+    for i in range(len(atom_table) + 1, n_synthases + len(atom_table) + 1):
+        while True:
+            new_x = round(random.uniform(-Lx, Lx), 1)
+            new_y = round(random.uniform(-Lx, Lx), 1)
+            if check_min_distance(new_x, new_y, atom_table, min_dist):
+                atom_table.append([i, i, initial_synth_ptype, new_x, new_y, DIVI_ZCOORD])
+                break
+    
+    # Add grid points to atom table
+    for i, coord in enumerate(triangular_grid):
+        atom_table.append([atom_table[-1][0] + 1, 99, 7, coord[0], coord[1], DIVI_ZCOORD])
+    
+    n_atoms = len(atom_table)
+    if n_atomtypes_:
+        n_atomtypes = n_atomtypes_
+    else:
+        n_atomtypes = int(max(np.array(atom_table)[:, 2]))
+    Lhalved = Lx
+    if yboxsize:
+        yLhalved = yboxsize
+    else:
+        yLhalved = Lhalved
+    
+    # Create configuration text
+    gridstring = "\n".join(" ".join(map(str, entry)) for entry in atom_table)
+    
+    config_content = f"""
+´Divisome´ setup with grid of reaction ghosts
+{n_atoms} atoms
+2 bonds
+0 angles
+{n_atomtypes} atom types
+1 bond types
+2 angle types
+-{Lhalved} {Lhalved} xlo xhi
+-{yLhalved} {yLhalved} ylo yhi
+-4.25 4.25 zlo zhi
+
+Masses
+
+1 1
+2 1
+3 1
+4 1
+5 {m_process}
+6 {m}
+7 1
+8 1
+9 {m_process}
+10 {m_diffu}
+
+Atoms
+
+{gridstring}
+
+Bonds
+
+1 1 1 2
+2 1 3 4
+""".strip()
+    
+    # Ensure output directory exists
+    os.makedirs(run_dir, exist_ok=True)
+    
+    # Write to file
+    with open(os.path.join(run_dir, "configuration.txt"), "w") as f:
+        f.write(config_content)
+    
+    #print(f"Configuration file saved to {os.path.join(run_dir, 'configuration.txt')}")

@@ -1,0 +1,455 @@
+from tqdm.notebook import tqdm
+import numpy as np
+import math
+import random
+import subprocess
+import os
+
+def flatten(arr):
+    return [val for subl in arr for val in subl]
+
+import os, fnmatch
+def find(pattern, path):
+    result = []
+    for root, dirs, files in os.walk(path):
+        for name in files:
+            if fnmatch.fnmatch(name, pattern):
+                result.append(os.path.join(root, name))
+    return result
+
+def runtag(inp, prm_sets):
+    tag = ""
+    for i, p in enumerate(list(prm_sets)):
+        tag += p + str(inp[i]) + "_"
+    return tag[:-1] ## leave out the final "_"
+
+def filestring_to_dict(lst):
+    result = {}
+    
+    for item in lst:
+        # Extract alphabetic characters for the key
+        key = ''.join(filter(str.isalpha, item))
+        
+        # Extract numeric characters (including the decimal point) for the value
+        value_str = ''.join(filter(lambda c: c.isdigit() or c == '.', item))
+        
+        # Convert the numeric string to float or int
+        if '.' in value_str:
+            value = float(value_str)
+        else:
+            value = int(value_str)
+        
+        # Assign the key-value pair to the result dictionary
+        result[key] = value
+    return result
+
+def parameters_and_paramsets(pkl):
+    def split_path_extract_paramlist(p):
+        split = p.split("/")
+        paramlist = [part for part in split if part.startswith("run_")][0]
+        paramlist = paramlistsplit("_")[1:]
+
+    
+    params = [filestring_to_dict(p.split("/")[1].split("_")[1:])
+        for p in pkl
+    ]
+    prm_sets = {key: sorted(list(set([prm[key] for prm in params])))
+                   for key in list(params[0])
+               }
+    return params, prm_sets
+
+def find_runfiles_dirs(rootdir):
+    """
+    
+    Recursively find all directories named 'runfiles' starting from rootdir.
+
+    Args:
+        rootdir (str): Path to start searching from.
+
+    Returns:
+        list of str: Full paths to all 'runfiles' directories.
+    """
+    runfiles_dirs = []
+    for dirpath, dirnames, _ in os.walk(rootdir):
+        if "runfiles" in dirnames:
+            runfiles_dirs.append(os.path.join(dirpath, "runfiles"))
+    return runfiles_dirs
+
+
+def build_rundir_dict(rundirs, params, prm_sets, runtag):
+    """
+    Match each param set to a rundir and return a dict with keys as sorted param tuples.
+
+    Args:
+        rundirs (list of str): List of run directory paths.
+        params (list of dict): Parameter dictionaries to create keys from.
+        prm_sets: The full set of parameters used in runtag.
+        runtag (func): Function to generate tag from param values and prm_sets.
+
+    Returns:
+        dict: Mapping from tuple(sorted(param.items())) to {"rundir": path}.
+
+    Run:
+    pkl = find("*starting_lammps.txt", "./")
+    params, prm_sets = parameters_and_paramsets(pkl)
+    rundirs = find_runfiles_dirs("./")
+    D = build_rundir_dict(rundirs, params, prm_sets, runtag)
+    """
+    D = {}
+    for prm in params:
+        key = tuple(sorted(prm.items()))
+        tag = runtag(list(prm.values()), prm_sets)
+        for path in rundirs:
+            parent = os.path.basename(os.path.dirname(path))  # gives 'run_rdis10_pact0.01_pdeact0.1_Kbend500'
+            if tag == parent.replace("run_", ""):
+                D[key] = {"rundir": path}
+                break
+    return D
+
+
+import subprocess
+import time
+
+def slurm_job_finished(job_id):
+    """Check if the given SLURM job has finished by using squeue."""
+    try:
+        result = subprocess.run(["squeue", "-j", str(job_id)], capture_output=True, text=True)
+        return str(job_id) not in result.stdout
+    except Exception as e:
+        print(f"Error checking SLURM job status: {e}")
+        return False
+
+def wait_and_run_commands(job_id, commands, sleep_time=10000):
+    """
+    Waits for a specified SLURM job to finish, then executes a list of functions.
+
+    Parameters
+    ----------
+    job_id : int or str
+        The SLURM job ID to monitor.
+    commands : list of callables
+        A list of zero-argument functions (e.g., lambdas) to execute once the job finishes.
+    sleep_time : int, optional
+        Time in seconds to wait between job status checks. Default is 10000 seconds.
+
+    Example
+    -------
+    >>> commands = [
+    ...     lambda: submit_papermill("job1", "path/to/notebook1.ipynb", "job1", "rdir", ram_gb=40, time_hours=30),
+    ...     lambda: submit_papermill("job2", "path/to/notebook2.ipynb", "job2", "rdir", ram_gb=40, time_hours=30),
+    ... ]
+    >>> wait_and_run_commands(12345678, commands)
+
+    This will wait until SLURM job 12345678 finishes, then submit the two papermill jobs defined in the commands list.
+    """
+    print(f"Monitoring SLURM job {job_id}...")
+    while not slurm_job_finished(job_id):
+        print(f"Waiting for job {job_id} to finish...")
+        time.sleep(sleep_time)
+    
+    print(f"Job {job_id} finished! Running commands...")
+    for i, cmd in enumerate(commands):
+        print(f"Running command {i + 1}...")
+        try:
+            cmd()
+        except Exception as e:
+            print(f"Error running command {i + 1}: {e}")
+
+
+#https://chatgpt.com/c/68396b26-96c4-8011-8cc6-a6c74a421910
+import os
+import subprocess
+import glob
+
+def submit_restart_runs(rdir, job_name, analysisonly=False, cores=2, time="30:00:00", mem="30G", 
+                        lmp_path="~/0__treadmilling/0__treadmilling_git/MD/lammpsSep21/src/lmp_serial",
+                        analysis_script="/nfs/scistore26/saricgrp/fhorvath/0__treadmilling/2__synthase_setup/2__vary_potential_size/filament_analysis.ipynb",
+                        env_setup="/nfs/scistore26/saricgrp/fhorvath/miniforge3/etc/profile.d",
+                        dontsubmit=False, additional_analysis=None, analyzefilaments=True,
+                        writeonly=False):
+    """
+    Submits a SLURM job to continue LAMMPS simulations by reading the latest restart file.
+    Also updates config.sh to config_restart.sh with appropriate modifications.
+    If writeonly is True, only write config_restart.sh in each directory and exit.
+    """
+
+    run_dirs = [line.strip() for line in open(rdir)]
+
+    for d in run_dirs:
+        config_path = os.path.join(d, "config.sh")
+        restart_path = os.path.join(d, "config_restart.sh")
+
+        if not os.path.exists(config_path):
+            print(f"Warning: {config_path} not found. Skipping.")
+            continue
+
+        # Find the latest restart file
+        restart_files = sorted(glob.glob(os.path.join(d, "restart.*")), key=lambda x: int(x.split(".")[-1]) if x.split(".")[-1].isdigit() else -1)
+        if not restart_files:
+            print(f"No restart.* files found in {d}. Skipping.")
+            continue
+
+        latest_restart = os.path.basename(restart_files[-1])
+
+        # Process config.sh into config_restart.sh
+        with open(config_path, "r") as f:
+            lines = f.readlines()
+
+        new_lines = []
+        for line in lines:
+            if line.startswith("read_data"):
+                new_lines.append("#" + line)
+                new_lines.append(f"read_restart {latest_restart}\n")
+            elif line.strip().startswith("dump_modify"):
+                new_lines.append(line.strip() + " append yes\n")
+            else:
+                new_lines.append(line)
+
+        with open(restart_path, "w") as f:
+            f.writelines(new_lines)
+
+        #print(f"Wrote {restart_path}")
+
+    if writeonly:
+        print("writeonly=True: Not submitting any jobs.")
+        return
+
+    # Write SLURM job script
+    os.makedirs("logs", exist_ok=True)
+
+    script_content = f"""#!/bin/bash
+#SBATCH --job-name={job_name}
+#SBATCH --output=logs/array_job_%A_task_%a.log
+#SBATCH -c {cores}
+#SBATCH --time={time}
+#SBATCH --mem={mem}
+#SBATCH --no-requeue
+#SBATCH --export=NONE
+unset SLURM_EXPORT_ENV
+
+dir=$(sed "${{SLURM_ARRAY_TASK_ID}}q;d" {rdir})
+#SBATCH --workdir $dir
+
+echo "Running in directory: $dir"
+cd $dir
+"""
+
+    if not analysisonly:
+        script_content += f"""
+touch starting_lammps.txt
+srun {lmp_path} -i config_restart.sh
+"""
+
+    script_content += f"""
+# Check for ERROR in log.txt before running analysis
+if grep -q "ERROR" log.txt; then
+    echo "Skipping analysis due to ERROR in log.txt"
+    exit 0
+fi
+"""
+
+    if analyzefilaments:
+        script_content += f"""
+source {env_setup}/conda.sh
+source {env_setup}/mamba.sh
+eval "$(mamba shell hook --shell bash)"
+mamba activate filaments
+srun papermill {analysis_script} analyze_slrm.ipynb -p runfold $dir -p num_cores {cores}
+"""
+
+    if additional_analysis:
+        for analysis in additional_analysis:
+            analysis_filename = os.path.basename(analysis)
+            script_content += f"""
+source {env_setup}/conda.sh
+source {env_setup}/mamba.sh
+eval "$(mamba shell hook --shell bash)"
+mamba activate filaments
+srun papermill {analysis} {analysis_filename} -p runfold $dir -p rundir $dir -p num_cores {cores}
+"""
+
+    with open("slurm_array.submit", "w") as f:
+        f.write(script_content)
+
+    if not dontsubmit:
+        line_count = len(run_dirs)
+        subprocess.run(["sbatch", f"--array=1-{line_count}", "slurm_array.submit"])
+
+
+
+import os
+import subprocess
+
+def submit_runs(rdir, job_name, analysisonly=False, cores=2, time="30:00:00", mem="30G", 
+                 lmp_path="~/0__treadmilling/0__treadmilling_git/MD/lammpsSep21/src/lmp_serial",
+                 analysis_script="/nfs/scistore26/saricgrp/fhorvath/0__treadmilling/2__synthase_setup/2__vary_potential_size/filament_analysis.ipynb",
+                 env_setup="/nfs/scistore26/saricgrp/fhorvath/miniforge3/etc/profile.d",
+                 dontsubmit=False, additional_analysis=None, analyzefilaments=True):
+    """
+    Creates and submits a SLURM array job script for running simulations and/or analysis on a list of directories.
+    """
+
+    os.makedirs("logs", exist_ok=True)
+    
+    script_content = f"""#!/bin/bash
+#SBATCH --job-name={job_name}
+#SBATCH --output=logs/array_job_%A_task_%a.log
+#SBATCH -c {cores}
+#SBATCH --time={time}
+#SBATCH --mem={mem}
+#SBATCH --no-requeue
+#SBATCH --export=NONE
+unset SLURM_EXPORT_ENV
+
+dir=$(sed "${{SLURM_ARRAY_TASK_ID}}q;d" {rdir})
+#SBATCH --workdir $dir
+
+echo "Running in directory: $dir"
+cd $dir
+"""
+
+    if not analysisonly:
+        script_content += f"""
+touch starting_lammps.txt
+srun {lmp_path} -i config.sh
+"""
+
+    # Always include the ERROR check before any analysis
+    script_content += f"""
+# Check for ERROR in log.txt before running analysis
+if grep -q "ERROR" log.txt; then
+    echo "Skipping analysis due to ERROR in log.txt"
+    exit 0
+fi
+"""
+
+    if analyzefilaments:
+        script_content += f"""
+# Filament analysis
+source {env_setup}/conda.sh
+source {env_setup}/mamba.sh
+eval "$(mamba shell hook --shell bash)"
+mamba activate filaments
+srun papermill {analysis_script} analyze_slrm.ipynb -p runfold $dir -p num_cores {cores}
+"""
+
+    if additional_analysis:
+        for analysis in additional_analysis:
+            analysis_filename = os.path.basename(analysis)
+            script_content += f"""
+# Additional analysis: {analysis_filename}
+source {env_setup}/conda.sh
+source {env_setup}/mamba.sh
+eval "$(mamba shell hook --shell bash)"
+mamba activate filaments
+srun papermill {analysis} {analysis_filename} -p runfold $dir -p rundir $dir -p num_cores {cores}
+"""
+
+    with open("slurm_array.submit", "w") as file:
+        file.write(script_content)
+
+    if not dontsubmit:
+        line_count = sum(1 for _ in open(rdir))
+        subprocess.run(["sbatch", f"--array=1-{line_count}", "slurm_array.submit"])
+
+
+
+
+
+def submit_papermill(job_name, ipynb_file, storeoutput, rundirs_file, ram_gb=30, time_hours=30, extra_args=""):
+    """
+    Generates a SLURM submission script and submits a batch job to run a Jupyter notebook via papermill.
+
+    Parameters:
+    - job_name (str): Name of the SLURM job.
+    - ipynb_file (str): Path to the Jupyter Notebook (.ipynb) file to execute.
+    - storeoutput (str): Directory where the executed notebooks will be saved.
+    - rundirs_file (str): ("runfold") Path to a file containing a list of working directories (one per line).
+    - ram_gb (int, optional): Amount of RAM requested in GB (default: 30GB).
+    - time_hours (int, optional): Maximum runtime for the job in hours (default: 30 hours).
+    - extra_args (str, optional): Additional arguments to pass to papermill (default: "").
+
+    The function:
+    1. Reads the `rundirs_file` to determine the number of SLURM array tasks.
+    2. Creates a submission script with correct SLURM directives.
+    3. Ensures necessary directories exist (`logs/` for logs and `storeoutput/` for output files).
+    4. Submits the job via `sbatch`.
+
+    Example usage:
+    ```python
+    submit_papermill_job(
+        job_name="calc_lengths",
+        ipynb_file="calc_filament_lengths.ipynb",
+        storeoutput="STOREOUTPUT",
+        rundirs_file="rundirs",
+        ram_gb=40,
+        time_hours=24,
+        extra_args="-p some_param 42"
+    )
+    ```
+    """
+
+    submit_file = f"{job_name}.submit"
+    ipynb_basename = os.path.splitext(os.path.basename(ipynb_file))[0]  # Extract filename without extension
+
+    # Get the number of lines in rundirs_file
+    try:
+        with open(rundirs_file, "r") as f:
+            max_index = sum(1 for _ in f)
+        if max_index == 0:
+            raise ValueError(f"Error: {rundirs_file} is empty!")
+    except FileNotFoundError:
+        raise FileNotFoundError(f"Error: {rundirs_file} not found!")
+
+    # Ensure necessary directories exist
+    os.makedirs("logs", exist_ok=True)
+    os.makedirs(storeoutput, exist_ok=True)
+
+    script_content = f"""#!/bin/bash
+#SBATCH --array=1-{max_index}
+#SBATCH --job-name={job_name}
+#SBATCH --output=logs/{job_name}_%A_task_%a.log
+#SBATCH -c 1
+#SBATCH --time={time_hours}:00:00
+#SBATCH --mem={ram_gb}G
+#SBATCH --no-requeue
+#SBATCH --export=NONE
+unset SLURM_EXPORT_ENV
+
+source /nfs/scistore26/saricgrp/fhorvath/miniforge3/etc/profile.d/conda.sh
+source /nfs/scistore26/saricgrp/fhorvath/miniforge3/etc/profile.d/mamba.sh
+eval "$(mamba shell hook --shell bash)"  # Add this line
+mamba activate filaments
+
+rundir=$(sed -n "${{SLURM_ARRAY_TASK_ID}}p" {rundirs_file})
+
+echo "Running analysis for directory: $rundir"
+
+papermill {ipynb_file} {storeoutput}/{ipynb_basename}_${{SLURM_ARRAY_TASK_ID}}.ipynb --start-timeout 300 \
+            -p runfold "$rundir" -p rundir "$rundir" {extra_args}
+"""
+
+    # Write the submission script
+    with open(submit_file, "w") as f:
+        f.write(script_content)
+    
+    print(f"Submission script '{submit_file}' created.")
+
+    # Submit the job
+    command = ["sbatch", submit_file]
+    print("Executing command:", " ".join(command))
+    subprocess.run(command, check=True)
+    print(f"Job '{job_name}' submitted.")
+
+# Example usage:
+# submit_papermill("calc_lengths", "calc_filament_lengths.ipynb", "STOREOUTPUT", "rundirs", ram_gb=30, time_hours=30, extra_args="-p some_param 42")
+
+
+import gzip
+def compress_pickle(obj, filename):
+    with gzip.open(filename, "wb") as f:
+        pickle.dump(obj, f, protocol=pickle.HIGHEST_PROTOCOL)
+
+def decompress_pickle(filepath):
+    with gzip.open(filepath, 'rb') as f:
+        return pickle.load(f)
