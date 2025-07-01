@@ -1,7 +1,10 @@
 from collections import OrderedDict
 import itertools
 
-def plot_data(prm_sets, D, grid_params, overlay_params, figure_params, plot_function, check_key, 
+from collections import OrderedDict
+import itertools
+
+def plot_data_(prm_sets, D, grid_params, overlay_params, figure_params, plot_function, check_key, 
               fixed_params=None, axis_edits=None, figsize_=None, 
               sharex=True, sharey=True):
     """
@@ -59,7 +62,6 @@ def plot_data(prm_sets, D, grid_params, overlay_params, figure_params, plot_func
     - The user-defined `plot_function` is responsible for formatting the plots.
     - This function assumes that `plt` (from matplotlib.pyplot) is already imported.
     """
-    
     fixed_params = fixed_params or {}
 
     figure_combinations = list(itertools.product(*[prm_sets[p] for p in figure_params]))
@@ -70,7 +72,14 @@ def plot_data(prm_sets, D, grid_params, overlay_params, figure_params, plot_func
         figsize = (4 * len(prm_sets[grid_params[1]]), 3 * len(prm_sets[grid_params[0]]))
         
     for fig_vals in figure_combinations:
-        fig_title = " ".join(f"{p}={v}" for p, v in zip(figure_params, fig_vals))
+        fig_param_dict = dict(zip(figure_params, fig_vals))
+
+        # Skip combinations that contradict fixed_params
+        skip = any(fig_param_dict.get(k) != v for k, v in fixed_params.items() if k in fig_param_dict)
+        if skip:
+            continue
+
+        fig_title = " ".join(f"{p}={v}" for p, v in fig_param_dict.items())
 
         fig, ax = plt.subplots(len(prm_sets[grid_params[0]]), 
                                len(prm_sets[grid_params[1]]), 
@@ -93,125 +102,7 @@ def plot_data(prm_sets, D, grid_params, overlay_params, figure_params, plot_func
                     key_dict[grid_params[1]] = grid2
                     if overlay_params:
                         key_dict[overlay_params[0]] = overlay
-                    for p, v in zip(figure_params, fig_vals):
-                        key_dict[p] = v
-                    for p, v in fixed_params.items():
-                        key_dict[p] = v
-
-                    key_tuple = tuple(sorted(key_dict.items()))
-
-                    if key_tuple in D and check_key in D[key_tuple]:
-                        plot_function(key_tuple, subplot_ax, overlay)
-
-                if j == 0:
-                    subplot_ax.annotate(f"{grid_params[0]}={grid1}", xy=(-0.3, 0.5), 
-                                        xycoords="axes fraction",
-                                        ha="right", va="center", fontsize=10, fontweight="bold")
-                if i == 0:
-                    subplot_ax.annotate(f"{grid_params[1]}={grid2}", xy=(0.5, 1.1), 
-                                        xycoords="axes fraction",
-                                        ha="center", va="bottom", fontsize=10, fontweight="bold")
-
-                if axis_edits:
-                    for prop, value in axis_edits.items():
-                        method = getattr(subplot_ax, prop, None)
-
-                        if callable(method):
-                            if isinstance(value, list) and all(isinstance(v, tuple) for v in value):
-                                for args in value:
-    fixed_params = fixed_params or {}
-
-    figure_combinations = list(itertools.product(*[prm_sets[p] for p in figure_params]))
-    
-    if figsize_:
-        figsize = figsize_
-    else:
-        figsize = (4 * len(prm_sets[grid_params[1]]), 3 * len(prm_sets[grid_params[0]]))
-        
-    for fig_vals in figure_combinations:
-        fig_title = " ".join(f"{p}={v}" for p, v in zip(figure_params, fig_vals))
-
-        fig, ax = plt.subplots(len(prm_sets[grid_params[0]]), 
-                               len(prm_sets[grid_params[1]]), 
-                               sharex=sharex, 
-                               sharey=sharey, 
-                               figsize=figsize)
-        
-        fig.subplots_adjust(wspace=.4)
-        fig.suptitle(fig_title)
-
-        for i, grid1 in enumerate(prm_sets[grid_params[0]]):
-            for j, grid2 in enumerate(prm_sets[grid_params[1]]):
-                subplot_ax = ax[i, j] if len(prm_sets[grid_params[0]]) > 1 else ax[j]
-
-                overlay_values = prm_sets[overlay_params[0]] if overlay_params else [None]
-
-                for overlay in overlay_values:
-                    key_dict = OrderedDict()
-                    key_dict[grid_params[0]] = grid1
-                    key_dict[grid_params[1]] = grid2
-                    if overlay_params:
-                        key_dict[overlay_params[0]] = overlay
-                    for p, v in zip(figure_params, fig_vals):
-                        key_dict[p] = v
-                    for p, v in fixed_params.items():
-                        key_dict[p] = v
-
-                    key_tuple = tuple(sorted(key_dict.items()))
-
-                    if key_tuple in D and check_key in D[key_tuple]:
-                        plot_function(key_tuple, subplot_ax, overlay)
-
-                if j == 0:
-                    subplot_ax.annotate(f"{grid_params[0]}={grid1}", xy=(-0.3, 0.5), 
-                                        xycoords="axes fraction",
-                                        ha="right", va="center", fontsize=10, fontweight="bold")
-                if i == 0:
-                    subplot_ax.annotate(f"{grid_params[1]}={grid2}", xy=(0.5, 1.1), 
-                                        xycoords="axes fraction",
-                                        ha="center", va="bottom", fontsize=10, fontweight="bold")
-
-                if axis_edits:
-                    for prop, value in axis_edits.items():
-                        method = getattr(subplot_ax, prop, None)
-
-                        if callable(method):
-                            if isinstance(value, list) and all(isinstance(v, tuple) for v in value):
-                                for args in value:
-    fixed_params = fixed_params or {}
-
-    figure_combinations = list(itertools.product(*[prm_sets[p] for p in figure_params]))
-    
-    if figsize_:
-        figsize = figsize_
-    else:
-        figsize = (4 * len(prm_sets[grid_params[1]]), 3 * len(prm_sets[grid_params[0]]))
-        
-    for fig_vals in figure_combinations:
-        fig_title = " ".join(f"{p}={v}" for p, v in zip(figure_params, fig_vals))
-
-        fig, ax = plt.subplots(len(prm_sets[grid_params[0]]), 
-                               len(prm_sets[grid_params[1]]), 
-                               sharex=sharex, 
-                               sharey=sharey, 
-                               figsize=figsize)
-        
-        fig.subplots_adjust(wspace=.4)
-        fig.suptitle(fig_title)
-
-        for i, grid1 in enumerate(prm_sets[grid_params[0]]):
-            for j, grid2 in enumerate(prm_sets[grid_params[1]]):
-                subplot_ax = ax[i, j] if len(prm_sets[grid_params[0]]) > 1 else ax[j]
-
-                overlay_values = prm_sets[overlay_params[0]] if overlay_params else [None]
-
-                for overlay in overlay_values:
-                    key_dict = OrderedDict()
-                    key_dict[grid_params[0]] = grid1
-                    key_dict[grid_params[1]] = grid2
-                    if overlay_params:
-                        key_dict[overlay_params[0]] = overlay
-                    for p, v in zip(figure_params, fig_vals):
+                    for p, v in fig_param_dict.items():
                         key_dict[p] = v
                     for p, v in fixed_params.items():
                         key_dict[p] = v
@@ -256,6 +147,7 @@ def plot_data(prm_sets, D, grid_params, overlay_params, figure_params, plot_func
         plt.legend()
         fig.tight_layout()
         plt.show()
+
 
 
 def histos_w_mean(key, ax, subkey, bins, overlaylabel, overlay=None):
