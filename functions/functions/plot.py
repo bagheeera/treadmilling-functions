@@ -1,8 +1,8 @@
 from collections import OrderedDict
 import itertools
 
-from collections import OrderedDict
-import itertools
+import matplotlib.pyplot as plt
+import numpy as np
 
 def plot_data_(prm_sets, D, grid_params, overlay_params, figure_params, plot_function, check_key, 
               fixed_params=None, axis_edits=None, figsize_=None, 
@@ -150,7 +150,7 @@ def plot_data_(prm_sets, D, grid_params, overlay_params, figure_params, plot_fun
 
 
 
-def histos_w_mean(key, ax, subkey, bins, overlaylabel, overlay=None):
+def histos_w_mean(key, ax, subkey, bins, D, overlaylabel, overlay=None):
 # Plot the histogram
     n, bins, patches = ax.hist(D[key][subkey], histtype="step", lw=3,
             density=True,

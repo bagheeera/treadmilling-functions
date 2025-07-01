@@ -446,6 +446,7 @@ papermill {ipynb_file} {storeoutput}/{ipynb_basename}_${{SLURM_ARRAY_TASK_ID}}.i
 
 
 import gzip
+import pickle
 def compress_pickle(obj, filename):
     with gzip.open(filename, "wb") as f:
         pickle.dump(obj, f, protocol=pickle.HIGHEST_PROTOCOL)
