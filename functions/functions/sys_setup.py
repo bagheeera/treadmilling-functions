@@ -3,6 +3,11 @@ import itertools
 import json
 from jinja2 import Template
 from tqdm.notebook import tqdm  # make sure tqdm is imported
+import numpy as np
+import math
+import random
+import subprocess
+import os
 
 def write_templates(parameter_values, base_values, template, dontwrite=False, adjust_dependent_params_fn=None,
                    omit_params=None,
@@ -73,6 +78,7 @@ def copy_reaction_directories(source_dir, base_target_dir, param_keys, combinati
 
 def generate_triangular_grid(min_coord, max_coord, sidelength):
     """Generate a triangular grid of points."""
+    import math
     coordinates = []
     y = min_coord
     row = 0
@@ -96,9 +102,10 @@ def check_min_distance(new_x, new_y, atom_table, min_dist):
     return True
 
 def generate_configuration(Lx, n_synthases, run_dir, initial_synth_ptype=6, zpos=0.5, 
-                           m=1, m_process=1, min_dist=1.3, sidelength=8, m_diffu=1,
+                           m=1, m_process=1, min_dist=1.3, sidelength=8, m_diffu=1, m_t6=1,
                           yboxsize=None, n_atomtypes_=None):
     """Generate the configuration file and save it to the given directory."""
+    import math
     MIN_COORD = -Lx
     MAX_COORD = Lx
     DIVI_ZCOORD = zpos
@@ -129,10 +136,11 @@ def generate_configuration(Lx, n_synthases, run_dir, initial_synth_ptype=6, zpos
         atom_table.append([atom_table[-1][0] + 1, 99, 7, coord[0], coord[1], DIVI_ZCOORD])
     
     n_atoms = len(atom_table)
-    if n_atomtypes_:
-        n_atomtypes = n_atomtypes_
-    else:
-        n_atomtypes = int(max(np.array(atom_table)[:, 2]))
+    #if n_atomtypes_:
+    #    n_atomtypes = n_atomtypes_
+    #else:
+    #    n_atomtypes = int(max(np.array(atom_table)[:, 2]))
+    n_atomtypes = 10
     Lhalved = Lx
     if yboxsize:
         yLhalved = yboxsize
@@ -156,12 +164,12 @@ def generate_configuration(Lx, n_synthases, run_dir, initial_synth_ptype=6, zpos
 
 Masses
 
-1 1
-2 1
-3 1
+1 {m}
+2 {m}
+3 {m}
 4 1
 5 {m_process}
-6 {m}
+6 {m_t6}
 7 1
 8 1
 9 {m_process}

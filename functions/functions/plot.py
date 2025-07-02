@@ -39,7 +39,11 @@ def plot_data_(prm_sets, D, grid_params, overlay_params, figure_params, plot_fun
         {
             "set_ylim": [0, 1],
             "vlines": [(5, 0, 1, {"color": "red", "linestyle": "--"})],
-            "set_xticks": [[0, 5, 10]]
+            "set_xticks": [[0, 5, 10]],
+            "axvline": [
+                (0.5, {"color": "red", "linestyle": "--", "linewidth": 2}),
+                (1.0, {"color": "blue", "linestyle": ":", "linewidth": 1}),
+            ]
         }
     figsize_ : tuple, optional
         Size of the entire figure. If None, it will be computed automatically.
@@ -62,6 +66,7 @@ def plot_data_(prm_sets, D, grid_params, overlay_params, figure_params, plot_fun
     - The user-defined `plot_function` is responsible for formatting the plots.
     - This function assumes that `plt` (from matplotlib.pyplot) is already imported.
     """
+    import matplotlib.pyplot as plt
     fixed_params = fixed_params or {}
 
     figure_combinations = list(itertools.product(*[prm_sets[p] for p in figure_params]))
