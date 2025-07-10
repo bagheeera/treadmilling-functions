@@ -168,3 +168,54 @@ def histos_w_mean(key, ax, subkey, bins, D, overlaylabel, overlay=None):
     mean_value = np.mean(D[key][subkey])
     ax.axvline(mean_value, color=color, linestyle='--', lw=2, 
                label=f"Mean={mean_value:.2f}")
+
+
+import os
+import glob
+from IPython.display import Video, display
+
+def show_mp4(D, key, index=0):
+    """
+    List and optionally display .mp4 files in D[key]['rundir'].
+
+    Parameters
+    ----------
+    D : dict
+        Must contain D[key]["rundir"] → str (path).
+    key : hashable
+        Key into D.
+    index : int, optional
+        Which video to display (0 = newest).  
+        Set to None if you only want the listing.
+    """
+    rundir = D[key].get("rundir")
+    if not rundir or not os.path.isdir(rundir):
+        print(f"[!] Invalid rundir: {rundir}")
+        return
+
+    mp4s = sorted(
+        glob.glob(os.path.join(rundir, "*.mp4")),
+        key=os.path.getmtime,
+        reverse=True,         # newest first
+    )
+
+    if not mp4s:
+        print("No .mp4 files found.")
+        return
+
+    # ── Listing ────────────────────────────────────────────────
+    print(f"Found {len(mp4s)} .mp4 file(s) in '{rundir}':")
+    for i, f in enumerate(mp4s):
+        ts = os.path.getmtime(f)
+        print(f"[{i}] {os.path.basename(f)}  (mod: {ts:%Y‑%m‑%d %H:%M:%S})")
+
+    # ── Display ────────────────────────────────────────────────
+    if index is None:
+        return  # user only wanted the list
+
+    if not (0 <= index < len(mp4s)):
+        print(f"[!] Invalid index {index}. Choose 0‑{len(mp4s)-1}.")
+        return
+
+    print(f"\nShowing [{index}] → {os.path.basename(mp4s[index])}")
+    display(Video(mp4s[index], embed=True))
