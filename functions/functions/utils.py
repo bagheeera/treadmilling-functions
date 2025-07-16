@@ -58,6 +58,18 @@ def parameters_and_paramsets(pkl):
                }
     return params, prm_sets
 
+def tuple_to_tag(params):
+    """
+    Convert a tuple of parameter-value pairs into a tag with underscores.
+    
+    Args:
+        params (tuple): Tuple of (parameter, value) pairs.
+        
+    Returns:
+        str: A string tag with parameter names and values joined by underscores.
+    """
+    return "_".join(f"{param}{value}" for param, value in params)
+
 def find_runfiles_dirs(rootdir):
     """
     

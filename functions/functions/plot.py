@@ -207,7 +207,7 @@ def show_mp4(D, key, index=0):
     print(f"Found {len(mp4s)} .mp4 file(s) in '{rundir}':")
     for i, f in enumerate(mp4s):
         ts = os.path.getmtime(f)
-        print(f"[{i}] {os.path.basename(f)}  (mod: {ts:%Y‑%m‑%d %H:%M:%S})")
+        print(f"[{i}] {os.path.basename(f)} ") # (mod: {ts:%Y‑%m‑%d %H:%M:%S})")
 
     # ── Display ────────────────────────────────────────────────
     if index is None:

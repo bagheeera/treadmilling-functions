@@ -23,8 +23,30 @@ def correct_PBC_jumps_dataframe(df, jumpcut=20, sidelength=200):
     return df
 
 
-from IPython.display import Video; 
-## assumed mp4 written to rundir
-def show_video(skey):
-    tag = D[key]["rundir"].split("/")[-3] + "_.mp4"
-    return Video(f"{D[key]["rundir"] + tag}", embed=True)
+import gzip
+def compress_pickle(obj, filename):
+    with gzip.open(filename, "wb") as f:
+        pickle.dump(obj, f, protocol=pickle.HIGHEST_PROTOCOL)
+
+def decompress_pickle(filepath):
+    with gzip.open(filepath, 'rb') as f:
+        return pickle.load(f)
+
+
+import os
+import pyarrow.feather as feather
+def load_output(rundir, verbose=True):
+    """Loads _df.pkl.gz or output.feather
+    """
+    if os.path.exists(rundir + "/_df.pkl.gz"):
+        if verbose:
+            print("Using _df.pkl.gz")
+        df = decompress_pickle(rundir + "/_df.pkl.gz")
+        return df
+    elif os.path.exists(rundir + "/output.feather"):
+        if verbose:
+            print("Using output.feather")
+        df = feather.read_feather(rundir + "/output.feather")
+        return df
+    else:
+        print("cannot find output files")
