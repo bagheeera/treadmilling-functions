@@ -50,3 +50,57 @@ def load_output(rundir, verbose=True):
         return df
     else:
         print("cannot find output files")
+
+
+import os
+import pandas as pd
+import json
+from tqdm.notebook import tqdm
+import subprocess
+
+def read_xyz(tdir="./"):
+    with open(os.path.join(tdir, "parameters.json"), "r") as f:
+        config_data = json.load(f)
+
+    tscale = config_data.get("tscale", 1)
+    tstep = config_data.get("tstep", 1)
+
+    filepath = os.path.join(tdir, 'output.xyz')
+    data = []
+    timestep = None
+    reading_atoms = False
+    column_names = None  # to be filled dynamically
+
+    # Get total number of lines using wc -l
+    result = subprocess.run(['wc', '-l', filepath], stdout=subprocess.PIPE, text=True)
+    total_lines = int(result.stdout.strip().split()[0])
+    
+    # Now read file with tqdm progress
+    with open(filepath, 'r') as f:
+        for line in tqdm(f, desc="Reading XYZ", total=total_lines):
+            line = line.strip()
+            if line.startswith("ITEM: TIMESTEP"):
+                timestep = int(next(f).strip())
+                reading_atoms = False
+            elif line.startswith("ITEM: ATOMS"):
+                column_names = ["time"] + line.split()[2:]  # skip "ITEM: ATOMS"
+                reading_atoms = True
+            elif reading_atoms and column_names:
+                values = line.split()
+                if len(values) == len(column_names) - 1:  # skip malformed rows
+                    # prepend current timestep as "time"
+                    data.append([timestep] + list(map(float, values)))
+    
+    df = pd.DataFrame(data, columns=column_names)
+    
+    if "time" in df.columns:
+        df["time"] = df["time"] * tstep / tscale
+
+    # Try to infer types smartly
+    for col in df.columns:
+        if col in {"id", "mol", "type"}:
+            df[col] = df[col].astype("int32")
+        elif col not in {"time"}:
+            df[col] = df[col].astype("float")
+
+    return df
