@@ -9,6 +9,12 @@ import random
 import subprocess
 import os
 
+def format_value(v, decimals=3):
+        if isinstance(v, float):
+            format_str = f"{{:.{decimals}f}}"
+            return format_str.format(v).rstrip('0').rstrip('.')  # Avoid .0 and overprecision
+        return str(v)
+
 def write_templates(parameter_values, base_values, template, dontwrite=False, adjust_dependent_params_fn=None,
                    omit_params=None,
                    decimals=3):
@@ -23,11 +29,7 @@ def write_templates(parameter_values, base_values, template, dontwrite=False, ad
     `omit_params`: Set or list of parameters to exclude from folder name
     """
 
-    def format_value(v, decimals=decimals):
-        if isinstance(v, float):
-            format_str = f"{{:.{decimals}f}}"
-            return format_str.format(v).rstrip('0').rstrip('.')  # Avoid .0 and overprecision
-        return str(v)
+    
 
     param_keys = list(parameter_values.keys())
     combinations = list(itertools.product(*parameter_values.values()))
@@ -44,7 +46,7 @@ def write_templates(parameter_values, base_values, template, dontwrite=False, ad
 
             # Construct dir name with proper formatting
             dir_name = "run_" + "_".join(
-                f"{k}{format_value(v)}"
+                f"{k}{format_value(v, decimals=decimals)}"
                 for k, v in param_combination.items()
                 if not omit_params or k not in omit_params
             )
@@ -61,13 +63,13 @@ def write_templates(parameter_values, base_values, template, dontwrite=False, ad
     return combinations, param_keys
 
 import shutil
-def copy_reaction_directories(source_dir, base_target_dir, param_keys, combinations):
+def copy_reaction_directories(source_dir, base_target_dir, param_keys, combinations, decimals=3):
     """Copies reaction directories based on parameter combinations."""
     for values in tqdm(combinations):
         params = dict(zip(param_keys, values))  # Create dictionary of parameters
 
         # Generate directory name dynamically
-        dir_name = os.path.join(base_target_dir, "run_" + "_".join(f"{k}{v}" for k, v in params.items()), "runfiles/Reactions_rdis/")
+        dir_name = os.path.join(base_target_dir, "run_" + "_".join(f"{k}{format_value(v, decimals=decimals)}" for k, v in params.items()), "runfiles/Reactions_rdis/")
         
         # Use shutil for efficient copying
         shutil.copytree(source_dir, dir_name, dirs_exist_ok=True)
