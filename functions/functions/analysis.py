@@ -59,11 +59,15 @@ from tqdm.notebook import tqdm
 import subprocess
 
 def read_xyz(tdir="./"):
-    with open(os.path.join(tdir, "parameters.json"), "r") as f:
-        config_data = json.load(f)
-
-    tscale = config_data.get("tscale", 1)
-    tstep = config_data.get("tstep", 1)
+    if os.path.exists(os.path.join(tdir, "parameters.json")):
+        with open(os.path.join(tdir, "parameters.json"), "r") as f:
+            config_data = json.load(f)
+    
+        tscale = config_data.get("tscale", 1)
+        tstep = config_data.get("tstep", 1)
+    else:
+        print("no parameter file found, defaulting to standard timescale parameters")
+        tstep = tscale = 1
 
     filepath = os.path.join(tdir, 'output.xyz')
     data = []

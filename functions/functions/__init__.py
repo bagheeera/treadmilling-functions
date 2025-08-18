@@ -8,11 +8,12 @@ from .utils import *
 from .plot import *
 from .analysis import *
 from .sys_setup import *
+from .kymo import *
 
 # Automatically collect function names
 definitions = {}
 
-for mod in [utils, plot, analysis, sys_setup]:
+for mod in [utils, plot, analysis, sys_setup, kymo]:
     fname = mod.__name__.split('.')[-1]
     defs = {
         name: obj

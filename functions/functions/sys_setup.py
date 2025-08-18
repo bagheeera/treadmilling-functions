@@ -103,7 +103,7 @@ def check_min_distance(new_x, new_y, atom_table, min_dist):
 
 def generate_configuration(Lx, n_synthases, run_dir, initial_synth_ptype=6, zpos=0.5, 
                            m=1, m_process=1, min_dist=1.3, sidelength=8, m_diffu=1, m_t6=1,
-                          yboxsize=None, n_atomtypes_=None):
+                          yboxsize=None, n_atomtypes_=None, zboxsize=None):
     """Generate the configuration file and save it to the given directory."""
     import math
     MIN_COORD = -Lx
@@ -133,7 +133,7 @@ def generate_configuration(Lx, n_synthases, run_dir, initial_synth_ptype=6, zpos
     
     # Add grid points to atom table
     for i, coord in enumerate(triangular_grid):
-        atom_table.append([atom_table[-1][0] + 1, 99, 7, coord[0], coord[1], DIVI_ZCOORD])
+        atom_table.append([atom_table[-1][0] + 1, atom_table[-1][1] + 1, 7, coord[0], coord[1], DIVI_ZCOORD])
     
     n_atoms = len(atom_table)
     #if n_atomtypes_:
