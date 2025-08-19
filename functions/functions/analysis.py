@@ -108,3 +108,115 @@ def read_xyz(tdir="./"):
             df[col] = df[col].astype("float")
 
     return df
+
+
+import numpy as np
+from tqdm.notebook import tqdm
+# https://chatgpt.com/c/68a41feb-3610-8320-a2b4-6aa49d8c8159
+def reassign_molids(df, verbose=False):
+    """
+    Reconstructs mol ids by tracking which mol ids appear first in time and then assigns them to all ids of that mol later on. 
+    Assigns lineages to molecules over time, ie the mol id within a lineage is passed on to all subsequent particle ids.    
+    Each lineage is identified by a ref_id (the "middle" ID in a group of molecules at a given time)
+    and a lineage label (#1, #2, ...). Lineages persist over time whenever possible.
+    
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Must have columns: "time", "mol", "id"
+    verbose : bool
+        If True, prints detailed propagation steps
+    
+    Returns
+    -------
+    df : pd.DataFrame
+        Copy of input df with 'mol' replaced by lineage labels (integers)
+    """
+    
+    df = df.copy()
+    df = df.sort_values("time").reset_index(drop=True)  # ensure time ordering
+    
+    # Convert relevant columns to numpy arrays for speed
+    time_arr = df["time"].values
+    mol_arr = df["mol"].values.astype(object)
+    id_arr = df["id"].values
+    
+    lineages = {}       # maps ref_id -> lineage_label (string, e.g. "#1")
+    used_labels = set() # set of used numeric labels
+    next_label = 1      # next available numeric label
+    
+    times = np.unique(time_arr)  # iterate over sorted unique times
+    
+    for t in tqdm(times, desc="Propagating lineages"):
+        if verbose:
+            print(f"\n=== TIME {t} ===")
+        
+        mask_t = time_arr == t           # mask for current time
+        mols_present = set(mol_arr[mask_t])  # unique mols present at this time
+        
+        # Step 1: Remove lineages whose ref_id is missing at this time
+        for ref_id in list(lineages.keys()):
+            mask_ref = (id_arr == ref_id) & mask_t
+            if mask_ref.any():
+                # ref_id present -> remove current mol from mols_present
+                current_mol = mol_arr[mask_ref][0]
+                mols_present.discard(current_mol)
+            else:
+                # ref_id missing -> lineage ends
+                if verbose:
+                    print(f"Lineage {lineages[ref_id]} with ref_id={ref_id} missing at time {t}, ending lineage.")
+                del lineages[ref_id]
+        
+        # Step 2: Assign new lineages for previously unseen mols
+        for mol in mols_present:
+            # IDs belonging to this mol at current time
+            ids_in_mol = np.sort(id_arr[mask_t & (mol_arr == mol)])
+            if len(ids_in_mol) == 0:
+                continue
+            
+            # Find next unused numeric label
+            while next_label in used_labels:
+                next_label += 1
+            lineage_label = f"#{next_label}"
+            used_labels.add(next_label)
+            next_label += 1
+            
+            # Choose the "middle" id as reference
+            ref_id = ids_in_mol[len(ids_in_mol)//2]
+            lineages[ref_id] = lineage_label
+            
+            # Overwrite mols with lineage label
+            mol_arr[mask_t & (mol_arr == mol)] = lineage_label
+            
+            if verbose:
+                print(f"New lineage {lineage_label} for mol={mol}, ref_id={ref_id}, ids={ids_in_mol.tolist()}")
+        
+        # Step 3: Update ref_ids for existing lineages
+        new_lineages = {}
+        for ref_id, lineage_label in lineages.items():
+            mask_ref = (id_arr == ref_id) & mask_t
+            if not mask_ref.any():
+                # ref_id missing -> skip
+                continue
+            current_mol = mol_arr[mask_ref][0]
+            
+            # IDs belonging to this mol at current time
+            ids_to_overwrite = np.sort(id_arr[mask_t & (mol_arr == current_mol)])
+            # Overwrite all mols with lineage label
+            mol_arr[mask_t & (mol_arr == current_mol)] = lineage_label
+            
+            # Select new middle ID as ref_id
+            new_ref_id = ids_to_overwrite[len(ids_to_overwrite)//2]
+            new_lineages[new_ref_id] = lineage_label
+            
+            if verbose and new_ref_id != ref_id:
+                print(f"[{lineage_label}] Updated ref_id: {ref_id} -> {new_ref_id}, mol={current_mol}, ids={ids_to_overwrite.tolist()}")
+        
+        # Update lineages for next time step
+        lineages = new_lineages
+    
+    # Convert lineage labels from "#N" to integers
+    df["mol"] = mol_arr
+    df["mol"] = df["mol"].apply(lambda x: int(x[1:]) if isinstance(x, str) and x.startswith("#") else x)
+    
+    return df
