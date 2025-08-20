@@ -368,7 +368,7 @@ srun papermill {analysis} {analysis_filename} -p runfold $dir -p rundir $dir -p 
 
 
 
-def submit_papermill(job_name, ipynb_file, storeoutput, rundirs_file, ram_gb=30, time_hours=30, extra_args=""):
+def submit_papermill(job_name, ipynb_file, storeoutput, rundirs_file, ram_gb=30, ncores=1, time_hours=30, extra_args=""):
     """
     Generates a SLURM submission script and submits a batch job to run a Jupyter notebook via papermill.
 
@@ -395,6 +395,7 @@ def submit_papermill(job_name, ipynb_file, storeoutput, rundirs_file, ram_gb=30,
         storeoutput="STOREOUTPUT",
         rundirs_file="rundirs",
         ram_gb=40,
+        ncores=1,
         time_hours=24,
         extra_args="-p some_param 42"
     )
@@ -421,7 +422,7 @@ def submit_papermill(job_name, ipynb_file, storeoutput, rundirs_file, ram_gb=30,
 #SBATCH --array=1-{max_index}
 #SBATCH --job-name={job_name}
 #SBATCH --output=logs/{job_name}_%A_task_%a.log
-#SBATCH -c 1
+#SBATCH -c {ncores}
 #SBATCH --time={time_hours}:00:00
 #SBATCH --mem={ram_gb}G
 #SBATCH --no-requeue
@@ -466,3 +467,16 @@ def compress_pickle(obj, filename):
 def decompress_pickle(filepath):
     with gzip.open(filepath, 'rb') as f:
         return pickle.load(f)
+
+from .analysis import read_xyz
+def load(rundir):
+    import pyarrow.feather as feather
+    import os
+    if os.path.exists(rundir + "/_df.pkl.gz"):
+        return decompress_pickle(rundir + "/_df.pkl.gz") # D[key]["rundir"]
+    elif os.path.exists(rundir + "/output.feather"):
+        return feather.read_feather(rundir + "/output.feather")
+    elif os.path.exists(rundir + "/output.xyz"):
+        return read_xyz(rundir)
+    else:
+        print("cannot find output files")
