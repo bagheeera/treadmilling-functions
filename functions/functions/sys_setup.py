@@ -103,7 +103,7 @@ def check_min_distance(new_x, new_y, atom_table, min_dist):
             return False
     return True
 
-def generate_configuration(Lx, n_synthases, run_dir, initial_synth_ptype=6, zpos=0.5, 
+def generate_configuration(Lx, n_synthases, run_dir, add_grid=True, initial_synth_ptype=6, zpos=0.5, 
                            m=1, m_process=1, min_dist=1.3, sidelength=8, m_diffu=1, m_t6=1,
                           yboxsize=None, n_atomtypes_=None, zboxsize=None):
     """Generate the configuration file and save it to the given directory."""
@@ -117,11 +117,11 @@ def generate_configuration(Lx, n_synthases, run_dir, initial_synth_ptype=6, zpos
     
     # Initial atom entries
     atom_table = [
-        [1, 1, 2, -0.5, 0.0, 0.0],
-        [2, 1, 3, 0.5, 0.0, 0.0],
-        [3, 9, 4, 0.0, -0.5, -2.0],
-        [4, 9, 4, 0.0, 0.5, -2.0],
-        [5, 2, initial_synth_ptype, 0.0, 0.0, DIVI_ZCOORD]
+     #   [1, 1, 2, -0.5, 0.0, 0.0],
+     #   [2, 1, 3, 0.5, 0.0, 0.0],
+        [1, 9, 4, 0.0, -0.5, -2.0],
+        [2, 9, 4, 0.0, 0.5, -2.0],
+    #    [5, 2, initial_synth_ptype, 0.0, 0.0, DIVI_ZCOORD]
     ]
     
     # Generate additional synthase atoms
@@ -134,9 +134,10 @@ def generate_configuration(Lx, n_synthases, run_dir, initial_synth_ptype=6, zpos
                 break
     
     # Add grid points to atom table
-    for i, coord in enumerate(triangular_grid):
-        atom_table.append([atom_table[-1][0] + 1, atom_table[-1][1] + 1, 7, coord[0], coord[1], DIVI_ZCOORD])
-    
+    if add_grid:
+        for i, coord in enumerate(triangular_grid):
+            atom_table.append([atom_table[-1][0] + 1, atom_table[-1][1] + 1, 7, coord[0], coord[1], DIVI_ZCOORD])
+        
     n_atoms = len(atom_table)
     #if n_atomtypes_:
     #    n_atomtypes = n_atomtypes_
@@ -155,7 +156,7 @@ def generate_configuration(Lx, n_synthases, run_dir, initial_synth_ptype=6, zpos
     config_content = f"""
 ´Divisome´ setup with grid of reaction ghosts
 {n_atoms} atoms
-2 bonds
+1 bonds
 0 angles
 {n_atomtypes} atom types
 1 bond types
@@ -184,7 +185,6 @@ Atoms
 Bonds
 
 1 1 1 2
-2 1 3 4
 """.strip()
     
     # Ensure output directory exists
