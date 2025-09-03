@@ -2,9 +2,6 @@ import os, json
 import pandas as pd
 from tqdm.notebook import tqdm
 
-import os, json
-import pandas as pd
-from tqdm import tqdm
 
 def stream_xyz(tdir="./", batch_size=None):
     """

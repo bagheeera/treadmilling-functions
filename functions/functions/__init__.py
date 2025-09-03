@@ -1,7 +1,7 @@
 import types
 import inspect
 
-from . import utils, plot, analysis  # import all your modules here
+from . import utils, plot, analysis, effective_rates  # import all your modules here
 
 # Optional: selectively import functions you want top-level
 from .utils import *
@@ -14,7 +14,7 @@ from .xyz_reader import *
 # Automatically collect function names
 definitions = {}
 
-for mod in [utils, plot, analysis, sys_setup, kymo, xyz_reader]:
+for mod in [utils, plot, analysis, sys_setup, kymo, xyz_reader, effective_rates]:
     fname = mod.__name__.split('.')[-1]
     defs = {
         name: obj
