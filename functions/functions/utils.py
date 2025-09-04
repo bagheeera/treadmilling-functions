@@ -389,12 +389,12 @@ def submit_papermill(job_name, ipynb_file, storeoutput, rundirs_file, ram_gb=30,
 
     Example usage:
     ```python
-    submit_papermill_job(
+    submit_papermill(
         job_name="calc_lengths",
         ipynb_file="calc_filament_lengths.ipynb",
         storeoutput="STOREOUTPUT",
-        rundirs_file="rundirs",
-        ram_gb=40,
+        rundirs_file="rdir",
+        ram_gb=10,
         ncores=1,
         time_hours=24,
         extra_args="-p some_param 42"
@@ -472,10 +472,16 @@ from .analysis import read_xyz
 def load(rundir):
     import pyarrow.feather as feather
     import os
-    if os.path.exists(rundir + "/_df.pkl.gz"):
-        return decompress_pickle(rundir + "/_df.pkl.gz") # D[key]["rundir"]
-    elif os.path.exists(rundir + "/output.feather"):
+    if os.path.exists(rundir + "/output.feather"):
         return feather.read_feather(rundir + "/output.feather")
+        
+        
+    elif os.path.exists(rundir + "/_df.pkl.gz"):
+        return decompress_pickle(rundir + "/_df.pkl.gz") # D[key]["rundir"]
+    
+    elif os.path.exists(rundir + "/output.feather.gz"):
+        with gzip.open(rundir + "/output.feather.gz", "rb") as f:
+            return feather.read_feather(f)
     elif os.path.exists(rundir + "/output.xyz"):
         return read_xyz(rundir)
     else:

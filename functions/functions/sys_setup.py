@@ -104,8 +104,13 @@ def check_min_distance(new_x, new_y, atom_table, min_dist):
     return True
 
 def generate_configuration(Lx, n_synthases, run_dir, add_grid=True, initial_synth_ptype=6, zpos=0.5, 
-                           m=1, m_process=1, min_dist=1.3, sidelength=8, m_diffu=1, m_t6=1,
-                          yboxsize=None, n_atomtypes_=None, zboxsize=None):
+                           m=1, m_process=1, min_dist=1.3, sidelength=8, m_diffu=1, m_t6=1, 
+                          yboxsize=None, n_atomtypes_=None, zboxsize=None,
+                          n_activating=0,
+                           activating_initial_yrange=30,
+                           activating_particle_type=8,
+                           grid_particle_type=7
+                          ):
     """Generate the configuration file and save it to the given directory."""
     import math
     MIN_COORD = -Lx
@@ -132,11 +137,18 @@ def generate_configuration(Lx, n_synthases, run_dir, add_grid=True, initial_synt
             if check_min_distance(new_x, new_y, atom_table, min_dist):
                 atom_table.append([i, i, initial_synth_ptype, new_x, new_y, DIVI_ZCOORD])
                 break
+    if n_activating:
+        for i in range(len(atom_table)+1, n_activating + len(atom_table)+1):
+            entry = [i, i, activating_particle_type,
+                     round(random.uniform(-Lx, Lx),1), 
+                     round(random.uniform(-activating_initial_yrange, activating_initial_yrange),1), 
+                     DIVI_ZCOORD]
+            atom_table.append(entry)
     
     # Add grid points to atom table
     if add_grid:
         for i, coord in enumerate(triangular_grid):
-            atom_table.append([atom_table[-1][0] + 1, atom_table[-1][1] + 1, 7, coord[0], coord[1], DIVI_ZCOORD])
+            atom_table.append([atom_table[-1][0] + 1, atom_table[-1][1] + 1, grid_particle_type, coord[0], coord[1], DIVI_ZCOORD])
         
     n_atoms = len(atom_table)
     #if n_atomtypes_:
