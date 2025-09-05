@@ -4,7 +4,7 @@ import itertools
 import matplotlib.pyplot as plt
 import numpy as np
 
-def plot_data_(prm_sets, D, grid_params, overlay_params, figure_params, plot_function, check_key, 
+def plot_data_(prm_sets, D, grid_params, overlay_params, plot_function, check_key, 
               fixed_params=None, axis_edits=None, figsize_=None, 
               sharex=True, sharey=True):
     """
@@ -25,8 +25,8 @@ def plot_data_(prm_sets, D, grid_params, overlay_params, figure_params, plot_fun
     overlay_params : list of str or None
         Parameter(s) to use for overlaid plots in each subplot. Pass None or an empty list
         for no overlays.
-    figure_params : list of str
-        Parameters to sweep over for generating separate figures.
+    #figure_params : list of str
+    #    Parameters to sweep over for generating separate figures.
     plot_function : callable
         Function called for each valid subplot. Signature:
         `plot_function(key_tuple, ax, overlay_value)`
@@ -65,10 +65,21 @@ def plot_data_(prm_sets, D, grid_params, overlay_params, figure_params, plot_fun
     -----
     - The user-defined `plot_function` is responsible for formatting the plots.
     - This function assumes that `plt` (from matplotlib.pyplot) is already imported.
+
+    Usage:
+    fct.plot.plot_data_(prm_sets, D,
+        grid_params=grid_params,
+        overlay_params=["rdis"],  # no overlay here
+        plot_function=lambda key, ax, overlay: 
+            ax.hist2d(*D[key]["synthcoords"], label=f'{overlay}'),
+        check_key="synthcoords",
+        axis_edits={"set_ylim": (-25,25),
+                    },
+    )
     """
     import matplotlib.pyplot as plt
     fixed_params = fixed_params or {}
-
+    figure_params = list(set(prm_sets) - set(grid_params + overlay_params))
     figure_combinations = list(itertools.product(*[prm_sets[p] for p in figure_params]))
     
     if figsize_:
