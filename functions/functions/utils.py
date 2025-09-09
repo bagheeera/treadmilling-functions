@@ -368,7 +368,7 @@ srun papermill {analysis} {analysis_filename} -p runfold $dir -p rundir $dir -p 
 
 
 
-def submit_papermill(job_name, ipynb_file, storeoutput, rundirs_file, ram_gb=30, ncores=1, time_hours=30, extra_args=""):
+def submit_papermill(job_name, ipynb_file, storeoutput, rundirs_file, ram_gb=30, ncores=1, time_hours=30, envname="filaments", extra_args=""):
     """
     Generates a SLURM submission script and submits a batch job to run a Jupyter notebook via papermill.
 
@@ -432,7 +432,7 @@ unset SLURM_EXPORT_ENV
 source /nfs/scistore26/saricgrp/fhorvath/miniforge3/etc/profile.d/conda.sh
 source /nfs/scistore26/saricgrp/fhorvath/miniforge3/etc/profile.d/mamba.sh
 eval "$(mamba shell hook --shell bash)"  # Add this line
-mamba activate filaments
+mamba activate {envname}
 
 rundir=$(sed -n "${{SLURM_ARRAY_TASK_ID}}p" {rundirs_file})
 

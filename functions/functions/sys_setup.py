@@ -109,13 +109,17 @@ def generate_configuration(Lx, n_synthases, run_dir, add_grid=True, initial_synt
                           n_activating=0,
                            activating_initial_yrange=30,
                            activating_particle_type=8,
-                           grid_particle_type=7
+                           grid_particle_type=7,
+                           zlim=4.25,
+                           _3Ddiviplacement=False,
+                           Lz_ini_low=0,
+                           Lz_ini_high=0,
+                           check_distance=True
                           ):
     """Generate the configuration file and save it to the given directory."""
     import math
     MIN_COORD = -Lx
     MAX_COORD = Lx
-    DIVI_ZCOORD = zpos
     
     # Generate triangular grid
     triangular_grid = generate_triangular_grid(MIN_COORD, MAX_COORD, sidelength)
@@ -132,23 +136,31 @@ def generate_configuration(Lx, n_synthases, run_dir, add_grid=True, initial_synt
     # Generate additional synthase atoms
     for i in range(len(atom_table) + 1, n_synthases + len(atom_table) + 1):
         while True:
-            new_x = round(random.uniform(-Lx, Lx), 1)
-            new_y = round(random.uniform(-Lx, Lx), 1)
-            if check_min_distance(new_x, new_y, atom_table, min_dist):
-                atom_table.append([i, i, initial_synth_ptype, new_x, new_y, DIVI_ZCOORD])
+            new_x = round(random.uniform(-Lx, Lx), 2)
+            new_y = round(random.uniform(-Lx, Lx), 2)
+            if _3Ddiviplacement:
+                new_z = round(random.uniform(Lz_ini_low+1, Lz_ini_high-1), 2)
+            else:
+                new_z = zpos
+            if check_distance:
+                if check_min_distance(new_x, new_y, atom_table, min_dist):
+                    atom_table.append([i, i, initial_synth_ptype, new_x, new_y, new_z])
+                    break
+            else:
+                atom_table.append([i, i, initial_synth_ptype, new_x, new_y, new_z])
                 break
     if n_activating:
         for i in range(len(atom_table)+1, n_activating + len(atom_table)+1):
             entry = [i, i, activating_particle_type,
-                     round(random.uniform(-Lx, Lx),1), 
-                     round(random.uniform(-activating_initial_yrange, activating_initial_yrange),1), 
-                     DIVI_ZCOORD]
+                         round(random.uniform(-Lx, Lx),2), 
+                         round(random.uniform(-activating_initial_yrange, activating_initial_yrange),2), 
+                         zpos]
             atom_table.append(entry)
     
     # Add grid points to atom table
     if add_grid:
         for i, coord in enumerate(triangular_grid):
-            atom_table.append([atom_table[-1][0] + 1, atom_table[-1][1] + 1, grid_particle_type, coord[0], coord[1], DIVI_ZCOORD])
+            atom_table.append([atom_table[-1][0] + 1, atom_table[-1][1] + 1, grid_particle_type, coord[0], coord[1], zpos])
         
     n_atoms = len(atom_table)
     #if n_atomtypes_:
@@ -175,7 +187,7 @@ def generate_configuration(Lx, n_synthases, run_dir, add_grid=True, initial_synt
 2 angle types
 -{Lhalved} {Lhalved} xlo xhi
 -{yLhalved} {yLhalved} ylo yhi
--4.25 4.25 zlo zhi
+-{zlim} {zlim} zlo zhi
 
 Masses
 

@@ -230,3 +230,54 @@ def show_mp4(D, key, index=0):
 
     print(f"\nShowing [{index}] → {os.path.basename(mp4s[index])}")
     display(Video(mp4s[index], embed=True))
+
+
+import numpy as np
+from matplotlib.colors import to_rgb, to_hex
+
+def interpolate_colors(color1, color2, factor=0.5):
+    """Helper function to linearly interpolate between two colors."""
+    return (1 - factor) * np.array(color1) + factor * np.array(color2)
+
+def generate_numbers_and_colors(N, colors):
+    """
+    Interpolate a list of colors to obtain a continuous palette
+    from https://chatgpt.com/c/66e2e2f4-b470-8011-8323-b89d94472e23
+    # Example usage with 20 numbers and the 9-color palette
+    colors = ['#FFBE0B', '#FB5607', '#FF006E', '#8338EC', '#3A86FF', '#FD8A09', '#FD2B3B', '#C11CAD', '#5E5FF6']
+    N = 20
+    numbers, interpolated_colors = generate_numbers_and_colors(N, colors)
+    """
+    # Convert hex colors to RGB
+    rgb_colors = np.array([to_rgb(c) for c in colors])
+    color_count = len(rgb_colors)
+    
+    # Initialize arrays for numbers and interpolated colors
+    numbers = np.zeros(N)
+    interpolated_colors = [''] * N
+    
+    # Calculate how many numbers correspond to each color interval
+    segment_length = N / (color_count - 1)
+    
+    # Loop over each color pair and interpolate between them
+    for i in range(color_count - 1):
+        start = int(i * segment_length)
+        end = int((i + 1) * segment_length)
+        
+        # Interpolate numbers
+        numbers[start:end] = np.linspace(start, end-1, end - start)
+        
+        # Interpolate colors
+        for j in range(start, end):
+            factor = (j - start) / (end - start)  # Factor for interpolation
+            interpolated_color = interpolate_colors(rgb_colors[i], rgb_colors[i + 1], factor)
+            interpolated_colors[j] = to_hex(interpolated_color)
+    
+    # Ensure the last color and number are properly set
+    numbers[-1] = N - 1
+    interpolated_colors[-1] = to_hex(rgb_colors[-1])
+    
+    return numbers, interpolated_colors
+
+
+
