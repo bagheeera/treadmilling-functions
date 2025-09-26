@@ -281,3 +281,33 @@ def generate_numbers_and_colors(N, colors):
 
 
 
+def fancy_scatter(ax, x, y, radius=0.5, facecolor='lightblue',
+                  edgecolor='black', shadow_color='black', shadow_alpha=0.4,
+                  shadow_offset=(-0.15, -0.15), shadow_scale=0.8,
+                  zorder_base=1, zorder_shadow=2):
+    """scatter plot with little crescents to mimic 3d behavior. example usage:
+    dft = df[(df["time"]==t_frame) & (df["x"].between(xlim[0], xlim[1])) & (df["y"].between(ylim[0], ylim[1]))]
+    fancy_scatter(ax, *dft[["x", "y"]].values.T, radius=.47, #facecolor='#f72585', 
+          facecolor="#24cedbff",
+          shadow_alpha=.1,
+          shadow_offset=(-0.35, -0.35)
+                 )
+                        """
+    dx, dy = shadow_offset
+    for xi, yi in zip(x, y):
+        base = Circle((xi, yi), radius,
+                      transform=ax.transData,
+                      facecolor=facecolor,
+                      edgecolor=edgecolor,
+                      lw=0.8, zorder=zorder_base)
+        ax.add_patch(base)
+
+        shadow = Circle((xi + radius * dx, yi + radius * dy),
+                        radius * shadow_scale,
+                        transform=ax.transData,
+                        facecolor=shadow_color,
+                        alpha=shadow_alpha,
+                        edgecolor='none',
+                        zorder=zorder_shadow)
+        shadow.set_clip_path(base)  # comment out this line if shadows vanish too much near edges
+        ax.add_patch(shadow)
