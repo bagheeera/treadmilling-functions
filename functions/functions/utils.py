@@ -474,10 +474,12 @@ def load(rundir):
     import os
     if os.path.exists(rundir + "/output.feather"):
         return feather.read_feather(rundir + "/output.feather")
-        
+    
+    elif os.path.exists(rundir + "/df.pkl.gz"):
+        return decompress_pickle(rundir + "/df.pkl.gz")   
         
     elif os.path.exists(rundir + "/_df.pkl.gz"):
-        return decompress_pickle(rundir + "/_df.pkl.gz") # D[key]["rundir"]
+        return decompress_pickle(rundir + "/_df.pkl.gz")
     
     elif os.path.exists(rundir + "/output.feather.gz"):
         with gzip.open(rundir + "/output.feather.gz", "rb") as f:
