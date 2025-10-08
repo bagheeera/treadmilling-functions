@@ -3,7 +3,7 @@ import pandas as pd
 from tqdm.notebook import tqdm
 
 
-def stream_xyz(tdir="./", batch_size=None):
+def stream_xyz(tdir="./", batch_size=None, filename="output.xyz"):
     """
     Stream a LAMMPS-style .xyz trajectory.
 
@@ -22,7 +22,7 @@ def stream_xyz(tdir="./", batch_size=None):
         print("no parameter file found, defaulting to standard timescale parameters")
         tstep = tscale = 1
 
-    filepath = os.path.join(tdir, "output.xyz")
+    filepath = os.path.join(tdir, filename)
     filesize = os.path.getsize(filepath)
 
     # accumulator for batch mode
@@ -63,7 +63,7 @@ def stream_xyz(tdir="./", batch_size=None):
                 chunk = []
                 reading_atoms = False
 
-            elif line.startswith("ITEM: ATOMS"):
+            elif line.startswith("ITEM: ATOMS") or line.startswith("ITEM: ENTRIES"): ## "entries" for bonds output files
                 column_names = ["time"] + line.split()[2:]
                 reading_atoms = True
 
@@ -91,9 +91,11 @@ def stream_xyz(tdir="./", batch_size=None):
     if batch_size and batch:
         yield pd.concat(batch, ignore_index=True)
 
-def read_xyz(tdir="./", batch_size=100):
+def read_xyz(tdir="./", batch_size=100, filename="output.xyz"):
     """
     Read entire trajectory into a single DataFrame.
     """
-    df_all = pd.concat(stream_xyz(tdir, batch_size=batch_size), ignore_index=True)
+    df_all = pd.concat(stream_xyz(tdir, 
+                                  batch_size=batch_size,
+                                  filename=filename), ignore_index=True)
     return df_all
