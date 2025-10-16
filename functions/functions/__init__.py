@@ -10,12 +10,13 @@ from .analysis import *
 from .sys_setup import *
 from .kymo import *
 from .xyz_reader import *
+from .sPGdeposition import *
 
 # Automatically collect function names
 definitions = {}
 
 for mod in [utils, plot, analysis, sys_setup, kymo, xyz_reader, effective_rates,
-           load_data]:
+           load_data, sPGdeposition]:
     fname = mod.__name__.split('.')[-1]
     defs = {
         name: obj
