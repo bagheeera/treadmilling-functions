@@ -1,7 +1,46 @@
 import numpy as np
 from tqdm.notebook import tqdm
 
-def calc_inward_deformations(df, timesteps, N, yconsider=50, Nbins_y=50):
+import numpy as np
+from scipy.optimize import least_squares
+
+def fit_circle(coords):
+    """
+    Fit a circle to a set of 2D points using least-squares optimization.
+
+    Parameters
+    ----------
+    coords : np.ndarray
+        Array of shape (N, 2) containing 2D points [[x1, y1], [x2, y2], ...].
+
+    Returns
+    -------
+    xc, yc, r : float
+        Circle center coordinates (xc, yc) and radius r.
+    """
+
+    x = coords[:, 0]
+    y = coords[:, 1]
+
+    # Residual function: distance from circle
+    def residuals(c):
+        xc, yc, r = c
+        return np.sqrt((x - xc)**2 + (y - yc)**2) - r
+
+    # Initial guess: center at mean, radius mean distance to center
+    x_m, y_m = x.mean(), y.mean()
+    r0 = np.mean(np.sqrt((x - x_m)**2 + (y - y_m)**2))
+    initial_guess = [x_m, y_m, r0]
+
+    result = least_squares(residuals, initial_guess)
+
+    xc, yc, r = result.x
+    return xc, yc, r
+
+
+
+
+def calc_inward_deformations(df, N, yconsider=50, Nbins_y=50):
     """
     Compute inward deformations using 2D histograms of (x, y) positions 
     for selected molecule types over time intervals.
@@ -11,8 +50,6 @@ def calc_inward_deformations(df, timesteps, N, yconsider=50, Nbins_y=50):
     ----------
     df : pandas.DataFrame
         DataFrame containing columns ['time', 'type', 'x', 'y'].
-    timesteps : int
-        Number of time intervals to divide the total time range into.
     N : int
         Number of bins along the x-axis.
     yconsider : float
@@ -24,17 +61,19 @@ def calc_inward_deformations(df, timesteps, N, yconsider=50, Nbins_y=50):
         Array of inward deformation values with shape (timesteps, N).
     """
     # Determine time range and interval size
-    T = df["time"].iloc[-1]
-    t_steps = np.linspace(0, T, timesteps)
-    delta_t = t_steps[1] - t_steps[0]
+    #T = df["time"].iloc[-1]
+    t_steps = df["time"].unique() #np.linspace(0, T, timesteps)
+    #delta_t = t_steps[1] - t_steps[0]
+    delta_t = float(np.mean(np.diff(df["time"].unique())))
 
     # Precompute histogram bin edges
     x_edges = np.linspace(df["x"].min(), df["x"].max(), N + 1)
     y_edges = np.linspace(-yconsider, yconsider, Nbins_y)
 
-    inward_deformations = []
+    inward_deformations = {}
 
     for t in tqdm(t_steps, desc="Calculating inward deformations", leave=False):
+        t = round(t, 5)
         # Select molecules of type 5 or 9 within the current time window
         df_t = df.loc[
             df["type"].isin([5, 9]) &
@@ -43,19 +82,21 @@ def calc_inward_deformations(df, timesteps, N, yconsider=50, Nbins_y=50):
         ]
 
         if df_t.empty:
-            inward_deformations.append(np.zeros(N))
+            inward_deformations[t] = np.zeros(N)
             continue
 
         # Compute 2D histogram and take the maximum along y-axis for each x-bin
         H, _, _ = np.histogram2d(df_t["x"], df_t["y"], bins=[x_edges, y_edges])
-        inward_deformations.append(H.max(axis=1))
+        max_along_long_axis = H.max(axis=1)
+        inward_deformations[t] = max_along_long_axis
 
-    return np.array(inward_deformations)
+    return inward_deformations
 
 
 import numpy as np
 
-def calc_radii(inward_deformations, N, timesteps, df,
+def calc_radii(inward_deformations, N, timesteps, #df,
+                circumference,
                strandwidth=4.5 # in nm
                ):
     """
@@ -84,7 +125,7 @@ def calc_radii(inward_deformations, N, timesteps, df,
     D0 = 1200  # nm (not currently used, but retained for context)
 
     # --- Compute initial radius ---
-    circumference = (df["x"].max() - df["x"].min()) ## in units of sigma
+    #circumference = (df["x"].max() - df["x"].min()) ## in units of sigma
     radius = circumference / (2 * np.pi)
 
     # --- Initialize ---
@@ -93,7 +134,7 @@ def calc_radii(inward_deformations, N, timesteps, df,
     stored_coordinates = []
 
     # --- Main loop ---
-    for frame in range(timesteps):
+    for frame in timesteps:
         delta_r = inward_deformations[frame] * deposition_factor
         radii = np.maximum(0, radii - delta_r)  # ensure radius doesn’t go negative
 
