@@ -4,6 +4,14 @@ setup(
     name='functions',
     version='0.1',
     packages=find_packages(),
-    install_requires=['numpy', 'pandas', 'tqdm',
-                      "pyarrow", "scikit-image"]
+    install_requires=[        
+        "numpy",
+        "pandas",
+        "matplotlib",
+        "tqdm",
+        "pyarrow",
+        "jinja2",
+        "tifffile",
+        "scikit-image",
+    ],
 )

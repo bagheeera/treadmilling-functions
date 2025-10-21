@@ -82,13 +82,13 @@ def calc_inward_deformations(df, N, yconsider=50, Nbins_y=50):
         ]
 
         if df_t.empty:
-            inward_deformations[t] = np.zeros(N)
+            inward_deformations[t] = np.zeros((N,Nbins_y-1))
             continue
 
         # Compute 2D histogram and take the maximum along y-axis for each x-bin
         H, _, _ = np.histogram2d(df_t["x"], df_t["y"], bins=[x_edges, y_edges])
-        max_along_long_axis = H.max(axis=1)
-        inward_deformations[t] = max_along_long_axis
+        #max_along_long_axis = H.max(axis=1)
+        inward_deformations[t] = H #max_along_long_axis
 
     return inward_deformations
 
