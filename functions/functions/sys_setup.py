@@ -27,6 +27,12 @@ def write_templates(parameter_values, base_values, template, dontwrite=False, ad
     `dontwrite`: Flag to skip actual file writing
     `adjust_dependent_params_fn`: Function for adjusting dependent parameters (optional)
     `omit_params`: Set or list of parameters to exclude from folder name
+
+    adjust_dependent_params_fn example usage:
+    import random
+    def adjust_dependent_params_fn(params):
+        params["seed"] = random.randint(1, 6)
+        return params
     """
 
     
@@ -114,7 +120,8 @@ def generate_configuration(Lx, n_synthases, run_dir, add_grid=True, initial_synt
                            _3Ddiviplacement=False,
                            Lz_ini_low=0,
                            Lz_ini_high=0,
-                           check_distance=True
+                           check_distance=True,
+                           n_bondtypes=1,
                           ):
     """Generate the configuration file and save it to the given directory."""
     import math
@@ -123,6 +130,7 @@ def generate_configuration(Lx, n_synthases, run_dir, add_grid=True, initial_synt
     
     # Generate triangular grid
     triangular_grid = generate_triangular_grid(MIN_COORD, MAX_COORD, sidelength)
+    
     
     # Initial atom entries
     atom_table = [
@@ -159,6 +167,7 @@ def generate_configuration(Lx, n_synthases, run_dir, add_grid=True, initial_synt
     
     # Add grid points to atom table
     if add_grid:
+        print("grid entries:", len(triangular_grid))
         for i, coord in enumerate(triangular_grid):
             atom_table.append([atom_table[-1][0] + 1, atom_table[-1][1] + 1, grid_particle_type, coord[0], coord[1], zpos])
         
@@ -183,7 +192,7 @@ def generate_configuration(Lx, n_synthases, run_dir, add_grid=True, initial_synt
 1 bonds
 0 angles
 {n_atomtypes} atom types
-1 bond types
+{n_bondtypes} bond types
 2 angle types
 -{Lhalved} {Lhalved} xlo xhi
 -{yLhalved} {yLhalved} ylo yhi

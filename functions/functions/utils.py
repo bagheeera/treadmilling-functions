@@ -114,7 +114,8 @@ def build_rundir_dict(rundirs, params, prm_sets, runtag):
         for path in rundirs:
             parent = os.path.basename(os.path.dirname(path))  # gives 'run_rdis10_pact0.01_pdeact0.1_Kbend500'
             if tag == parent.replace("run_", ""):
-                D[key] = {"rundir": path}
+                abs_path = os.path.abspath(path)
+                D[key] = {"rundir": abs_path}
                 break
     return D
 
