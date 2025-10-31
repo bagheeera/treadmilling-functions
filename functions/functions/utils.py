@@ -210,16 +210,35 @@ def submit_restart_runs(rdir, job_name, analysisonly=False, cores=2, time="30:00
 
         new_lines = []
         for line in lines:
+            ## read in restart files
             if line.startswith("read_data"):
                 new_lines.append("#" + line)
                 new_lines.append(f"read_restart {latest_restart}\n")
-            elif line.strip().startswith("dump_modify"):
-                new_lines.append(line.strip() + " append yes\n")
+            
+            ## modify output file names to include iteration number
+            elif line.startswith("dump"):
+                for ext in [".dump", ".out", ".xyz"]:
+                    if ext in line:
+                        newline = line.replace(ext, f"_{iteration}{ext}")
+                        break
+            
+            elif line.startswith("run"):
+                ## extract previous run length
+                prev_run_length = int(line.split()[1])
+                new_run_length = prev_run_length - int(latest_restart)
+                print(f"Previous run length: {prev_run_length}, latest restart: {latest_restart}, new run length: {new_run_length}")
+                new_lines.append(f"run {new_run_length}\n")
+
+
+            #elif line.strip().startswith("dump_modify"):
+            #    new_lines.append(line.strip() + " append yes\n")
             else:
                 new_lines.append(line)
 
         with open(restart_path, "w") as f:
             f.writelines(new_lines)
+
+  
 
         #print(f"Wrote {restart_path}")
 
@@ -389,16 +408,16 @@ def submit_papermill(job_name, ipynb_file, storeoutput, rundirs_file, ram_gb=30,
     4. Submits the job via `sbatch`.
 
     Example usage:
-    ```python
-    submit_papermill(
-        job_name="calc_lengths",
-        ipynb_file="calc_filament_lengths.ipynb",
-        storeoutput="STOREOUTPUT",
+    ```
+    fct.utils.submit_papermill(
+        job_name="read",
+        ipynb_file="~/0__treadmilling/utils/read_xyz.ipynb",
+        storeoutput="read",
         rundirs_file="rdir",
         ram_gb=10,
         ncores=1,
         time_hours=24,
-        extra_args="-p some_param 42"
+        extra_args="-p delete True"
     )
     ```
     """
