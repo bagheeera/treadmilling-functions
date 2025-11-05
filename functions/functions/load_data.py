@@ -1,6 +1,6 @@
 from pathlib import Path
 
-def find_pkl_files(root="."):
+def find_pkl_files(root=".", ending="pkl"):
     """
     Recursively find all .pkl and .pkl.gz files under root,
     returning only the base filenames (without paths).
@@ -16,7 +16,7 @@ def find_pkl_files(root="."):
         Set of base filenames.
     """
     root = Path(root)
-    pkl_files = {f.name for f in root.rglob("*.pkl")} | {f.name for f in root.rglob("*.pkl.gz")}
+    pkl_files = {f.name for f in root.rglob(f"*.{ending}")} | {f.name for f in root.rglob(f"*.{ending}.gz")}
     return pkl_files
 
 import os
