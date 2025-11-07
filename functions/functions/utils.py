@@ -504,7 +504,7 @@ def safe_write_df(df, rundir):
     tmp = Path(rundir) / "df.pkl.tmp"
 
     # Write to temp file
-    compress_pickle.dump(df, tmp)
+    compress_pickle(df, tmp)
 
     # Force write to disk (optional but safer)
     os.sync()
