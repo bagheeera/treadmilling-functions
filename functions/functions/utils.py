@@ -488,6 +488,17 @@ def decompress_pickle(filepath):
     with gzip.open(filepath, 'rb') as f:
         return pickle.load(f)
 
+from pathlib import Path
+import time
+def modified_within(file_path, minutes=5):
+    file = Path(file_path)
+    if not file.exists():
+        return False
+    
+    mtime = file.stat().st_mtime  # modification timestamp
+    age_seconds = time.time() - mtime
+    return age_seconds < minutes * 60
+
 from .analysis import read_xyz
 def load(rundir):
     import pyarrow.feather as feather
@@ -505,6 +516,10 @@ def load(rundir):
         with gzip.open(rundir + "/output.feather.gz", "rb") as f:
             return feather.read_feather(f)
     elif os.path.exists(rundir + "/output.xyz"):
-        return read_xyz(rundir)
+        df = read_xyz(rundir)
+        if not modified_within(rundir + "/output.xyz", minutes=5):
+            compress_pickle(df, rundir + "/df.pkl.gz")
+        return df
+
     else:
         print("cannot find output files")
