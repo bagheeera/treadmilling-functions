@@ -499,6 +499,19 @@ def modified_within(file_path, minutes=5):
     age_seconds = time.time() - mtime
     return age_seconds < minutes * 60
 
+def safe_write_df(df, rundir):
+    final = Path(rundir) / "df.pkl.gz"
+    tmp = Path(rundir) / "df.pkl.tmp"
+
+    # Write to temp file
+    compress_pickle.dump(df, tmp)
+
+    # Force write to disk (optional but safer)
+    os.sync()
+
+    # Atomically replace
+    tmp.replace(final)  # atomic on POSIX systems
+
 from .analysis import read_xyz
 def load(rundir):
     import pyarrow.feather as feather
@@ -517,8 +530,8 @@ def load(rundir):
             return feather.read_feather(f)
     elif os.path.exists(rundir + "/output.xyz"):
         df = read_xyz(rundir)
-        if not modified_within(rundir + "/output.xyz", minutes=5):
-            compress_pickle(df, rundir + "/df.pkl.gz")
+        if not modified_within(f"{rundir}/output.xyz", minutes=5):
+            safe_write_df(df, rundir)
         return df
 
     else:
