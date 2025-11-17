@@ -478,6 +478,88 @@ srun papermill {ipynb_file} {storeoutput}/{ipynb_basename}_${{SLURM_ARRAY_TASK_I
 # submit_papermill("calc_lengths", "calc_filament_lengths.ipynb", "STOREOUTPUT", "rundirs", ram_gb=30, time_hours=30, extra_args="-p some_param 42")
 
 
+
+import os
+import subprocess
+
+def submit_python(job_name, py_file, rundirs_file, ram_gb=30, ncores=1, time_hours=30, envname="filaments", extra_args=None):
+    """
+    Generates a SLURM submission script and submits a batch job to run a Python script via srun.
+
+    Parameters:
+    - job_name (str): Name of the SLURM job.
+    - py_file (str): Path to the Python (.py) file to execute.
+    - rundirs_file (str): Path to a file containing a list of working directories (one per line).
+    - ram_gb (int, optional): Amount of RAM requested in GB (default: 30GB).
+    - ncores (int, optional): Number of cores (default: 1).
+    - time_hours (int, optional): Maximum runtime in hours (default: 30).
+    - envname (str, optional): Conda environment name to activate (default: "filaments").
+    - extra_args (dict, optional): Dictionary of extra environment variables to pass to the script.
+
+    Example usage:
+        submit_python(
+            job_name="run_analysis",
+            py_file="analyze.py",
+            rundirs_file="rdirs.txt",
+            ram_gb=10,
+            ncores=2,
+            time_hours=24,
+            extra_args={"param1": 42, "param2": 0.5}
+        )
+    """
+
+    extra_args = extra_args or {}
+    submit_file = f"{job_name}.submit"
+    py_basename = os.path.splitext(os.path.basename(py_file))[0]
+
+    # Count lines in rundirs_file to define array
+    try:
+        with open(rundirs_file, "r") as f:
+            max_index = sum(1 for _ in f)
+        if max_index == 0:
+            raise ValueError(f"Error: {rundirs_file} is empty!")
+    except FileNotFoundError:
+        raise FileNotFoundError(f"Error: {rundirs_file} not found!")
+
+    os.makedirs("logs", exist_ok=True)
+
+    # Prepare extra environment variables
+    export_lines = "\n".join([f'export {k}="{v}"' for k, v in extra_args.items()])
+
+    script_content = f"""#!/bin/bash
+#SBATCH --array=1-{max_index}
+#SBATCH --job-name={job_name}
+#SBATCH --output=logs/{job_name}_%A_task_%a.log
+#SBATCH -c {ncores}
+#SBATCH --time={time_hours}:00:00
+#SBATCH --mem={ram_gb}G
+#SBATCH --no-requeue
+#SBATCH --export=NONE
+unset SLURM_EXPORT_ENV
+
+source /nfs/scistore26/saricgrp/fhorvath/miniforge3/etc/profile.d/conda.sh
+source /nfs/scistore26/saricgrp/fhorvath/miniforge3/etc/profile.d/mamba.sh
+eval "$(mamba shell hook --shell bash)"
+mamba activate {envname}
+
+rundir=$(sed -n "${{SLURM_ARRAY_TASK_ID}}p" {rundirs_file})
+
+echo "Running analysis for directory: $rundir"
+
+{export_lines}
+export rundir="$rundir"
+
+srun python {py_file}
+"""
+
+    with open(submit_file, "w") as f:
+        f.write(script_content)
+    
+    print(f"Submission script '{submit_file}' created.")
+    subprocess.run(["sbatch", submit_file], check=True)
+    print(f"Job '{job_name}' submitted.")
+
+
 import gzip
 import pickle
 def compress_pickle(obj, filename):
