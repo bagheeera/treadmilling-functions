@@ -458,7 +458,7 @@ rundir=$(sed -n "${{SLURM_ARRAY_TASK_ID}}p" {rundirs_file})
 
 echo "Running analysis for directory: $rundir"
 
-papermill {ipynb_file} {storeoutput}/{ipynb_basename}_${{SLURM_ARRAY_TASK_ID}}.ipynb --start-timeout 300 \
+srun papermill {ipynb_file} {storeoutput}/{ipynb_basename}_${{SLURM_ARRAY_TASK_ID}}.ipynb --start-timeout 300 \
             -p runfold "$rundir" -p rundir "$rundir" {extra_args}
 """
 
@@ -513,7 +513,7 @@ def safe_write_df(df, rundir):
     tmp.replace(final)  # atomic on POSIX systems
 
 from .analysis import read_xyz
-def load(rundir):
+def load(rundir, dontwritedf=False):
     import pyarrow.feather as feather
     import os
     if os.path.exists(rundir + "/output.feather"):
@@ -531,8 +531,29 @@ def load(rundir):
     elif os.path.exists(rundir + "/output.xyz"):
         df = read_xyz(rundir)
         if not modified_within(f"{rundir}/output.xyz", minutes=5):
-            safe_write_df(df, rundir)
+            if not dontwritedf: ## write out compressed output file unless suppressed
+                safe_write_df(df, rundir)
         return df
 
     else:
         print("cannot find output files")
+
+def find_files_recentlyunchanged(root_dir=".", minutes=10, fname="output.xyz", exclude_fname=None):
+        import os
+        import time
+        
+        threshold_sec = minutes * 60
+        now = time.time()
+        result = []
+
+        for dirpath, _, filenames in os.walk(root_dir):
+            if fname in filenames:
+                if exclude_fname and exclude_fname in filenames:
+                    continue  # skip this directory
+                
+                filepath = os.path.join(dirpath, fname)
+                mtime = os.path.getmtime(filepath)
+                if now - mtime > threshold_sec:
+                    result.append(os.path.abspath(dirpath))
+
+        return result
