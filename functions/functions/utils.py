@@ -333,6 +333,11 @@ def submit_runs(rdir, job_name, analysisonly=False, cores=2, time="30:00:00", me
 #SBATCH --export=NONE
 unset SLURM_EXPORT_ENV
 
+export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
+export MKL_NUM_THREADS=$SLURM_CPUS_PER_TASK
+export OPENBLAS_NUM_THREADS=$SLURM_CPUS_PER_TASK
+export NUMEXPR_NUM_THREADS=$SLURM_CPUS_PER_TASK
+
 dir=$(sed "${{SLURM_ARRAY_TASK_ID}}q;d" {rdir})
 #SBATCH --workdir $dir
 
@@ -449,6 +454,11 @@ def submit_papermill(job_name, ipynb_file, storeoutput, rundirs_file, ram_gb=30,
 #SBATCH --export=NONE
 unset SLURM_EXPORT_ENV
 
+export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
+export MKL_NUM_THREADS=$SLURM_CPUS_PER_TASK
+export OPENBLAS_NUM_THREADS=$SLURM_CPUS_PER_TASK
+export NUMEXPR_NUM_THREADS=$SLURM_CPUS_PER_TASK
+
 source /nfs/scistore26/saricgrp/fhorvath/miniforge3/etc/profile.d/conda.sh
 source /nfs/scistore26/saricgrp/fhorvath/miniforge3/etc/profile.d/mamba.sh
 eval "$(mamba shell hook --shell bash)"  # Add this line
@@ -536,6 +546,11 @@ def submit_python(job_name, py_file, rundirs_file, ram_gb=30, ncores=1, time_hou
 #SBATCH --no-requeue
 #SBATCH --export=NONE
 unset SLURM_EXPORT_ENV
+
+export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
+export MKL_NUM_THREADS=$SLURM_CPUS_PER_TASK
+export OPENBLAS_NUM_THREADS=$SLURM_CPUS_PER_TASK
+export NUMEXPR_NUM_THREADS=$SLURM_CPUS_PER_TASK
 
 source /nfs/scistore26/saricgrp/fhorvath/miniforge3/etc/profile.d/conda.sh
 source /nfs/scistore26/saricgrp/fhorvath/miniforge3/etc/profile.d/mamba.sh
