@@ -17,7 +17,8 @@ def format_value(v, decimals=3):
 
 def write_templates(parameter_values, base_values, template, dontwrite=False, adjust_dependent_params_fn=None,
                    omit_params=None,
-                   decimals=3):
+                   decimals=3,
+                   overwrite=False):
     """
     Write templates for all combinations, with support for dependent parameters.
     
@@ -27,6 +28,8 @@ def write_templates(parameter_values, base_values, template, dontwrite=False, ad
     `dontwrite`: Flag to skip actual file writing
     `adjust_dependent_params_fn`: Function for adjusting dependent parameters (optional)
     `omit_params`: Set or list of parameters to exclude from folder name
+    `overwrite`: Whether to overwrite existing files
+    `decimals`: Number of decimal places for float formatting in directory names
 
     adjust_dependent_params_fn example usage:
     import random
@@ -61,10 +64,16 @@ def write_templates(parameter_values, base_values, template, dontwrite=False, ad
             os.makedirs(os.path.join(dir_name, "runfiles"), exist_ok=True)
 
             config_output = template.render(params)
-            with open(os.path.join(dir_name, "runfiles", "config.sh"), "w") as f:
-                f.write(config_output)
-            with open(os.path.join(dir_name, "runfiles", "parameters.json"), "w") as json_file:
-                json.dump(params, json_file, indent=4)
+            config_path = os.path.join(dir_name, "runfiles", "config.sh")
+            params_path = os.path.join(dir_name, "runfiles", "parameters.json")
+
+            if overwrite or not os.path.exists(config_path):
+                with open(config_path, "w") as f:
+                    f.write(config_output)
+
+            if overwrite or not os.path.exists(params_path):
+                with open(params_path, "w") as json_file:
+                    json.dump(params, json_file, indent=4)
 
     return combinations, param_keys
 
