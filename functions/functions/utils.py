@@ -5,6 +5,57 @@ import random
 import subprocess
 import os
 
+import os
+import sys
+
+import os
+
+def check_dirs_with_file_without_file(dir_name=None, required_files=None, missing_files=None):
+    """
+    Return a list of directories (searched recursively from cwd) whose name is `dir_name`,
+    that contain ALL files in `required_files`, and contain NONE of the files in `missing_files`.
+
+    `required_files` and `missing_files` may be strings or lists of strings.
+    """
+
+    # Help
+    if dir_name in ("-h", "--help"):
+        print("Usage: check_dirs_with_file_without_file(<directory_name>, <required_files>, <missing_files>)")
+        print("")
+        print("required_files and missing_files may be a string or a list of strings.")
+        print("")
+        print("Returns: list of matching directory paths.")
+        print("")
+        print("Example:")
+        print("  check_dirs_with_file_without_file('runfiles', ['output.xyz'], ['df.pkl.gz'])")
+        return []
+
+    # Normalize args
+    if isinstance(required_files, str):
+        required_files = [required_files]
+    if isinstance(missing_files, str):
+        missing_files = [missing_files]
+
+    if not dir_name or not required_files or not missing_files:
+        raise ValueError("Missing arguments: dir_name, required_files, missing_files must all be provided.")
+
+    cwd = os.getcwd()
+    matches = []
+
+    for root, dirs, files in os.walk(cwd):
+        if os.path.basename(root) != dir_name:
+            continue
+
+        has_all_required = all(os.path.isfile(os.path.join(root, f)) for f in required_files)
+        has_any_missing = any(os.path.isfile(os.path.join(root, f)) for f in missing_files)
+
+        if has_all_required and not has_any_missing:
+            matches.append(root)
+
+    return matches
+
+
+
 def flatten(arr):
     return [val for subl in arr for val in subl]
 

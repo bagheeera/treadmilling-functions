@@ -311,3 +311,34 @@ def fancy_scatter(ax, x, y, radius=0.5, facecolor='lightblue',
                         zorder=zorder_shadow)
         shadow.set_clip_path(base)  # comment out this line if shadows vanish too much near edges
         ax.add_patch(shadow)
+
+import matplotlib.pyplot as plt
+import matplotlib as mpl
+import matplotlib.cm as cm
+from cycler import cycler
+import numpy as np
+
+def set_cmap_colorcycle(cmap_name="viridis", N=10):
+    """usage example: set_cmap_colorcycle("plasma", 12)"""
+    cmap = cm.get_cmap(cmap_name, N)        # N discrete colors
+    colors = cmap(np.linspace(0, 1, N))     # sample the colormap
+    mpl.rcParams['axes.prop_cycle'] = cycler(color=colors)
+
+from tueplots import cycler
+from tueplots.constants import markers
+from tueplots.constants.color import palettes
+
+def use_tue():
+    """Set matplotlib to use tueplots style with paultol high contrast color palette."""
+     #
+     # Set color cycle to paultol high contrast
+     #
+    plt.rcParams.update(
+        cycler.cycler(
+            color=palettes.pn #paultol_high_contrast #[:3], #marker=markers.x_like_bold[:3]
+        )
+    )
+
+def reset_matplotlib():
+    """Reset matplotlib to default settings."""
+    mpl.rcParams.update(mpl.rcParamsDefault)
