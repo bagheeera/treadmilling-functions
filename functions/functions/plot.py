@@ -318,10 +318,28 @@ import matplotlib.cm as cm
 from cycler import cycler
 import numpy as np
 
-def set_cmap_colorcycle(cmap_name="viridis", N=10):
-    """usage example: set_cmap_colorcycle("plasma", 12)"""
-    cmap = cm.get_cmap(cmap_name, N)        # N discrete colors
-    colors = cmap(np.linspace(0, 1, N))     # sample the colormap
+import numpy as np
+import matplotlib as mpl
+from matplotlib import cm
+from cycler import cycler
+
+def set_cmap_colorcycle(cmap_name="viridis", N=10, portion=(0.0, 1.0)):
+    """
+    Set the matplotlib color cycle using a colormap.
+
+    Parameters
+    ----------
+    cmap_name : str
+        Name of the matplotlib colormap.
+    N : int
+        Number of colors to generate.
+    portion : tuple(float, float)
+        Fraction of the colormap to use (start, end), each in [0, 1].
+        E.g., (1/3, 1) uses the final 2/3 of the colormap.
+    """
+    start, end = portion
+    cmap = cm.get_cmap(cmap_name, N)
+    colors = cmap(np.linspace(start, end, N))
     mpl.rcParams['axes.prop_cycle'] = cycler(color=colors)
 
 
@@ -343,3 +361,72 @@ def use_tue():
 def reset_matplotlib():
     """Reset matplotlib to default settings."""
     mpl.rcParams.update(mpl.rcParamsDefault)
+
+
+def load_pretty_figure_setup():
+    import matplotlib.pyplot as plt
+    import matplotlib as mpl
+    import os
+    import sys
+
+    # Prepend your TeX Live to PATH
+    os.environ["PATH"] = os.path.expanduser("~/texlive/bin/x86_64-linux") + ":" + os.environ["PATH"]
+
+    _preamble_shared = R"""
+        \usepackage{graphicx}
+        \DeclareMathOperator{\arcsinh}{arcsinh}
+        \DeclareMathOperator{\km}{k_\mathrm{m}}
+        \DeclareMathOperator{\fbi}{f_\mathrm{bi}}
+        \DeclareMathOperator{\eps}{\epsilon_{\mathrm{mc}}}
+        \DeclareMathOperator{\epscrit}{\epsilon_{\mathrm{mc}}^*}
+        \DeclareMathOperator{\uf}{u_{\mathrm{f}}}
+        \DeclareMathOperator{\kBT}{k_\mathrm{B}T}
+        """[
+        1:
+    ]
+
+
+
+    def mpl_rcParams_avenir():
+        rcParams = {}
+        rcParams["font.family"] = "sans-serif"
+        rcParams["font.cursive"] = ["Optima"]
+        rcParams["text.usetex"] = True
+        # rcParams['text.latex.unicode']= True
+        rcParams["pgf.texsystem"] = "lualatex"
+        rcParams["pgf.rcfonts"] = False
+        rcParams["pgf.preamble"] = (
+            R"""
+        \usepackage[utf8x]{inputenc}
+        \usepackage[T1]{fontenc}
+        \usepackage{fontspec}
+        \usepackage{amsmath}
+        \setmainfont{Avenir}[Scale=.9]
+        \renewcommand{\setmainfont}{}
+        \renewcommand{\sffamily}{}
+        """[
+                1:
+            ]
+            + "\n"
+            + _preamble_shared
+        )
+        return rcParams
+
+    def rc_params_setup():
+        mpl.rcParams["font.family"] = "serif"
+        mpl.rcParams["text.usetex"] = True
+        mpl.rcParams["figure.constrained_layout.use"] = True
+        mpl.rcParams.update(mpl_rcParams_avenir())
+        # mpl.rcParams["pgf.texsystem"] = "lualatex"
+        # mpl.rcParams["text.latex.preamble"] = mpl.rcParams['pgf.preamble'] #R"\usepackage{amsmath}\usepackage{lmodern}"
+        mpl.rcParams["text.latex.preamble"] = (
+            R"""
+        \usepackage{lmodern}
+        \usepackage{amsmath}
+        """
+            + "\n"
+            + _preamble_shared
+        )
+
+    rc_params_setup()
+    print("Pretty figure set-up loaded.")  
