@@ -324,15 +324,16 @@ def set_cmap_colorcycle(cmap_name="viridis", N=10):
     colors = cmap(np.linspace(0, 1, N))     # sample the colormap
     mpl.rcParams['axes.prop_cycle'] = cycler(color=colors)
 
-from tueplots import cycler
-from tueplots.constants import markers
-from tueplots.constants.color import palettes
+
 
 def use_tue():
     """Set matplotlib to use tueplots style with paultol high contrast color palette."""
      #
      # Set color cycle to paultol high contrast
      #
+    from tueplots import cycler
+    from tueplots.constants import markers
+    from tueplots.constants.color import palettes
     plt.rcParams.update(
         cycler.cycler(
             color=palettes.pn #paultol_high_contrast #[:3], #marker=markers.x_like_bold[:3]
