@@ -1,14 +1,17 @@
 ## from http://127.0.0.1:7777/notebooks/0__treadmilling/6__balance_out_epsilon/process_synthases.ipynb
 
-def correct_PBC_jumps(x, jumpcut=20, sidelength=200):
+def correct_PBC_jumps(x, jumpcut=20, sidelength=200,
+                      verbose=False):
     x = x.copy()  # Avoid modifying the input array directly
     for i in range(1, len(x)):
         if x[i] > x[i - 1]:
             if x[i] - x[i - 1] > jumpcut:
-                print(f"Jump detected at index {i}: {x[i]} -> adjusting by -{sidelength}")
+                if verbose:
+                    print(f"Jump detected at index {i}: {x[i]} -> adjusting by -{sidelength}")
                 x[i:] -= sidelength
         elif x[i - 1] - x[i] > jumpcut:
-            print(f"Jump detected at index {i}: {x[i]} -> adjusting by +{sidelength}")
+            if verbose:
+                print(f"Jump detected at index {i}: {x[i]} -> adjusting by +{sidelength}")
             x[i:] += sidelength
     return x
 
