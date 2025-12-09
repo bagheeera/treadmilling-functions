@@ -8,7 +8,10 @@ def plot_func(
     t,
     savefig=False,
     savepath=None,
-    figsize=(6, 4),
+    figsize=(7, 4),
+    xlim=(-150*5, 150*5),
+    sZ=1,
+    s_synth=5,
     nearest_frame=True,
     scatter_kwargs=None,
     **kwargs
