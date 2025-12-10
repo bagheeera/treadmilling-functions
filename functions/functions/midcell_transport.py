@@ -316,7 +316,7 @@ def disp_plot(ax,
         vmin=-vmax, vmax=vmax,
         cmap="bwr"
     )
-    ax.axhline(y=0, c="k", alpha=.3)
+    #ax.axhline(y=0, c="k", alpha=.3)
     
     # Define the arrow grid density
     y_density = 4  # e.g., use every 4th bin along the y-axis
@@ -357,3 +357,106 @@ def disp_plot(ax,
     #cbar.ax.invert_yaxis()
     return im
     #plt.show()
+
+
+def windowed_filament_age_hist(ax, key, D, t_min, t_max, label=None,
+                               color="orangered", as_density=False):
+    # Select times in window
+    times = [t for t in sorted(D[key]["filament_age_profiles"].keys())
+             if t_min <= t <= t_max]
+
+    if len(times) == 0:
+        return  # No data in this window
+    
+    # Collect all (possibly normalized) mean values in the time window
+    mean_list = []
+    y_bins = None
+    for t in times:
+        dft = D[key]["filament_age_profiles"][t]
+        values = dft["mean"].values.copy()
+        
+        if as_density:
+            bin_width = np.diff(dft["y_bin_center"].values).mean()  # approximate
+            values = values / (np.nansum(values) * bin_width)
+        
+        mean_list.append(values)
+        
+        if y_bins is None:
+            y_bins = dft["y_bin_center"].values
+    
+    # Convert to array for nanmean/nanstd
+    mean_array = np.array(mean_list)
+    
+    # Compute mean and std over time window
+    mean_over_window = np.nanmean(mean_array, axis=0)
+    std_over_window = np.nanstd(mean_array, axis=0)
+    
+    # Scale y_bins if needed
+    y_bins_scaled = 5 * np.array(y_bins)
+    
+    # Plot horizontal line
+    p = ax.plot(mean_over_window, y_bins_scaled, lw=2, label=label,
+    color=color)
+    
+    # Add shaded area for ±1 STD
+    ax.fill_betweenx(
+        y_bins_scaled,
+        mean_over_window - std_over_window,
+        mean_over_window + std_over_window,
+        color=p[0].get_color(),
+        alpha=0.3,
+    )
+    
+    # Labels
+    ax.set_ylabel("Long cell axis (nm)")
+    
+    # if as_density:
+    #     ax.set_xlabel(f"Filament age probability density ({t_min}-{t_max}s)")
+    # else:
+    #     ax.set_xlabel(f"Mean filament age\n({t_min}-{t_max}s)")
+
+
+import pandas as pd
+def compute_max_age_profiles(df, times, y_range=(-35, 35), nbins_y=30):
+    """
+    Compute mean and SEM of max mol ages binned by y position for given time points.
+
+    Parameters:
+        df (pd.DataFrame): DataFrame with columns ['id', 'time', 'mol', 'y']
+        times (list): List of time points to compute profiles at
+        y_bin_width (float): Width of each y bin
+        y_range (tuple): Range multiplier for y bins (used with y_bin_width)
+        nbins_y (int): Number of y bins (overrides y_bin_width and y_range if given)
+
+    Returns:
+        dict: {time: result_df with columns ['y_bin_center', 'mean', 'sem']}
+    """
+    df = df.copy()
+
+    # Compute first_time and age
+    df['first_time'] = df.groupby('id')['time'].transform('first')
+    df['age'] = df['time'] - df['first_time']
+
+    # Compute max age per mol
+    mol_max_age = df.groupby('mol')['age'].max()
+
+    # Define y bins
+    y_min = y_range[0] #* y_bin_width
+    y_max = y_range[1] #* y_bin_width
+    y_bins = np.linspace(y_min, y_max, nbins_y)
+
+    profiles = {}
+
+    for t in times:
+        df_t = df[df['time'] == t].copy()
+
+        df_t['mol_age'] = df_t['mol'].map(mol_max_age)
+        df_t['y_bin'] = pd.cut(df_t['y'], bins=y_bins)
+
+        grouped = df_t.groupby('y_bin')['mol_age']
+        result_df = grouped.mean().reset_index(name='mean')
+        result_df['sem'] = grouped.sem().values
+        result_df['y_bin_center'] = result_df['y_bin'].apply(lambda x: (x.left + x.right) / 2)
+
+        profiles[t] = result_df
+    return profiles
