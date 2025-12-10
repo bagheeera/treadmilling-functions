@@ -248,3 +248,112 @@ def scatter_fct(
                   frameon=False)
 
     return ax
+
+
+
+
+## monomer displacement functions
+from scipy.stats import binned_statistic_2d
+
+def filter_by_time(xy, d_xy, time, T_range):
+    # https://chatgpt.com/c/6790ce99-4950-8011-a937-642f9f7f5c2a
+    """Filter the results based on a given time range."""
+    # Flatten the lists and filter based on the time range
+    all_xy = np.concatenate(xy)
+    all_d_xy = np.concatenate(d_xy)
+    all_time = np.concatenate(time)
+    
+    time_mask = (all_time >= T_range[0]) & (all_time <= T_range[1])
+    
+    # Apply the mask to each array
+    filtered_xy = all_xy[time_mask]
+    filtered_d_xy = all_d_xy[time_mask]
+    filtered_time = all_time[time_mask]
+    
+    return filtered_xy, filtered_d_xy, filtered_time
+
+def bin_dxy(xy, d_xy, N_bins=25, yrange=35):
+
+    
+    x_minmax = np.min(xy[:,0]), np.max(xy[:,0])
+    y_minmax = -yrange, yrange #np.min(xy[:,1]), np.max(xy[:,1]),
+    x_minmax, y_minmax
+    
+    
+    bins = [np.linspace(x_minmax[0], x_minmax[1], N_bins),
+           np.linspace(y_minmax[0], y_minmax[1], N_bins)]
+    
+    d_x_mean, x_edges, y_edges, binnumber = binned_statistic_2d(
+        xy[:, 0],
+        xy[:, 1],
+        d_xy[:, 0],  # x-component of vectors
+        statistic='mean',
+        bins=bins
+    )
+    
+    d_y_mean, _, _, _ = binned_statistic_2d(
+        xy[:, 0],
+        xy[:, 1],
+        d_xy[:, 1],  # y-component of vectors
+        statistic='mean',
+        bins=bins
+    )
+
+    return x_minmax, y_minmax, d_x_mean, d_y_mean, x_edges, y_edges, binnumber
+
+def disp_plot(ax,
+    x_minmax, y_minmax, d_y_mean, x_edges, y_edges, 
+    binnumber, cut=1,
+    arrowscale=1,
+    vmax=.01):
+    import matplotlib.pyplot as plt
+    import numpy as np
+    
+    im = ax.imshow(
+        d_y_mean.T,
+        origin='lower',
+        extent=[x_edges[0], x_edges[-1], y_edges[0], y_edges[-1]],
+        vmin=-vmax, vmax=vmax,
+        cmap="bwr"
+    )
+    ax.axhline(y=0, c="k", alpha=.3)
+    
+    # Define the arrow grid density
+    y_density = 4  # e.g., use every 4th bin along the y-axis
+    
+    # Calculate the center points for the arrows
+    x_centers = (x_edges[:-1] + x_edges[1:]) / 2
+    y_centers = (y_edges[:-1] + y_edges[1:]) / 2
+    
+    # Slice the y-centers and d_y_mean.T to reduce the number of arrows along y
+    y_quiver_centers = y_centers[::y_density]
+    d_y_mean_quiver = d_y_mean.T[::y_density, :]
+    
+    # Create a meshgrid for the arrow origins
+    X, Y = np.meshgrid(x_centers, y_quiver_centers)
+    
+    # Define the arrow components
+    U = np.zeros_like(d_y_mean_quiver)
+    V = d_y_mean_quiver
+    V = d_y_mean_quiver * 1000
+    
+    #cut = 1
+    
+    V[V>cut]=cut
+    
+    V[V<-cut]=-cut 
+    
+    # Overlay the quiver plot with a more direct approach
+    # Use the V values for coloring
+    ax.quiver(X, Y, U, V, #V, cmap='bwr',
+              pivot='mid',
+              scale_units='xy',
+              scale=arrowscale, 
+              #scale=1000.0 / (2 * vmax))  # Dynamic scaling based on vmax
+             )
+    #ax.set_xticklabels([])
+    #ax.set_yticklabels([])
+    #cbar = fig.colorbar(im, shrink=.4)
+    #cbar.ax.invert_yaxis()
+    return im
+    #plt.show()
