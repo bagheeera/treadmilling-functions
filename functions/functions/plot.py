@@ -6,7 +6,7 @@ import numpy as np
 
 def plot_data_(prm_sets, D, grid_params, overlay_params, plot_function, check_key, 
               fixed_params=None, axis_edits=None, figsize_=None, 
-              sharex=True, sharey=True):
+              sharex=True, sharey=True, renamedict=None):
     """
     Generates a grid of subplots for each combination of parameters in `figure_params`,
     using `grid_params` to define the subplot layout and optionally overlaying data
@@ -69,7 +69,7 @@ def plot_data_(prm_sets, D, grid_params, overlay_params, plot_function, check_ke
     Usage:
     fct.plot.plot_data_(prm_sets, D,
         grid_params=grid_params,
-        overlay_params=["rdis"],  # no overlay here
+        overlay_params=["rdis"],
         plot_function=lambda key, ax, overlay: 
             ax.hist2d(*D[key]["synthcoords"], label=f'{overlay}'),
         check_key="synthcoords",
@@ -127,13 +127,18 @@ def plot_data_(prm_sets, D, grid_params, overlay_params, plot_function, check_ke
 
                     if key_tuple in D and check_key in D[key_tuple]:
                         plot_function(key_tuple, subplot_ax, overlay)
-
+                if renamedict:
+                    column_label = renamedict.get(grid_params[0], grid_params[0])
+                    row_label = renamedict.get(grid_params[1], grid_params[1])
+                else:
+                    column_label = grid_params[0]
+                    row_label = grid_params[1]
                 if j == 0:
-                    subplot_ax.annotate(f"{grid_params[0]}={grid1}", xy=(-0.3, 0.5), 
+                    subplot_ax.annotate(f"{column_label}={grid1}", xy=(-0.3, 0.5), 
                                         xycoords="axes fraction",
                                         ha="right", va="center", fontsize=10, fontweight="bold")
                 if i == 0:
-                    subplot_ax.annotate(f"{grid_params[1]}={grid2}", xy=(0.5, 1.1), 
+                    subplot_ax.annotate(f"{row_label}={grid2}", xy=(0.5, 1.1), 
                                         xycoords="axes fraction",
                                         ha="center", va="bottom", fontsize=10, fontweight="bold")
 
