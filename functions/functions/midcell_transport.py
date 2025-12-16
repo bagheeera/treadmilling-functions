@@ -250,6 +250,126 @@ def scatter_fct(
     return ax
 
 
+import matplotlib.pyplot as plt
+
+def plot_panels_with_hist(
+    df,
+    t_frame,
+    scale=1.0,
+    Nbins=25,
+    colors=('#f72585', '#4cc9f0'),
+    y_window=30,
+    y_scale=5,
+    xlim=(-700, 700),
+    figsize_base=(12, 2.5),
+    width_ratios=(4, 1.2),
+    wspace=0.05,
+    scatter_kwargs=None,
+    show=True,
+    savepath=None,
+):
+    """
+    Combined transport scatter plot with vertical density histograms.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input dataframe.
+    t_frame : int
+        Time frame to plot.
+    fct : module or object
+        Must provide fct.midcell_transport.scatter_fct.
+    scale : float
+        Global figure scaling.
+    Nbins : int
+        Number of histogram bins.
+    colors : tuple
+        Colors for (Synthase, FtsZ).
+    y_window : float
+        Y-range (±) used for histogram filtering.
+    y_scale : float
+        Scaling applied to y-values in histogram.
+    xlim : tuple
+        X-axis limits for scatter plot.
+    figsize_base : tuple
+        Base figure size before scaling.
+    width_ratios : tuple
+        Width ratios for (scatter, histogram).
+    wspace : float
+        Horizontal spacing between axes.
+    scatter_kwargs : dict
+        Extra keyword arguments passed to scatter_fct.
+    show : bool
+        Whether to call plt.show().
+    savepath : str or None
+        If provided, saves figure to this path.
+
+    Returns
+    -------
+    fig, (ax0, ax1)
+    """
+
+    if scatter_kwargs is None:
+        scatter_kwargs = {}
+
+    fig, (ax0, ax1) = plt.subplots(
+        1, 2,
+        figsize=(scale * figsize_base[0], scale * figsize_base[1]),
+        sharey=True,
+        gridspec_kw={
+            "width_ratios": width_ratios,
+            "wspace": wspace,
+        },
+    )
+
+    # === LEFT AX: scatter ===
+    scatter_fct(
+        df,
+        ax0,
+        t_frame,
+        xlim=list(xlim),
+        **scatter_kwargs,
+    )
+
+    # === RIGHT AX: histograms ===
+    df_Z = df[(df["type"].isin([1, 2, 3])) & (df["time"] == t_frame)]
+    df_synth = df[(df["type"].isin([5, 6])) & (df["time"] == t_frame)]
+
+    for dfi, color, label in zip(
+        [df_synth, df_Z],
+        colors,
+        ["Synthase", "FtsZ"],
+    ):
+        dfi = dfi[dfi["y"].between(-y_window, y_window)]
+        ax1.hist(
+            dfi["y"] * y_scale,
+            bins=Nbins,
+            histtype="step",
+            lw=2,
+            density=True,
+            alpha=0.7,
+            orientation="horizontal",
+            color=color,
+            label=label,
+        )
+
+    ax1.set_xlabel("Density")
+    ax1.legend()
+    ax1.set_ylim(-y_window * y_scale, y_window * y_scale)
+
+    # === axis consistency ===
+    ax0.set_aspect("equal", adjustable="datalim")
+    ax1.set_ylim(ax0.get_ylim())
+
+    plt.tight_layout()
+
+    if savepath is not None:
+        fig.savefig(savepath, dpi=300, bbox_inches="tight")
+
+    if show:
+        plt.show()
+
+    return fig, (ax0, ax1)
 
 
 ## monomer displacement functions
@@ -420,7 +540,8 @@ def orientation_plot(ax, x_minmax, y_minmax, d_x_mean, d_y_mean, x_edges, y_edge
 
 
 def windowed_filament_age_hist(ax, key, D, t_min, t_max, label=None,
-                               color="orangered", as_density=False):
+                               color="orangered", as_density=False,
+                               ylabel="Long cell axis (nm)"):
     # Select times in window
     times = [t for t in sorted(D[key]["filament_age_profiles"].keys())
              if t_min <= t <= t_max]
@@ -468,7 +589,8 @@ def windowed_filament_age_hist(ax, key, D, t_min, t_max, label=None,
     )
     
     # Labels
-    ax.set_ylabel("Long cell axis (nm)")
+    if ylabel is not None:
+        ax.set_ylabel(ylabel)
     
     # if as_density:
     #     ax.set_xlabel(f"Filament age probability density ({t_min}-{t_max}s)")
