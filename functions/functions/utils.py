@@ -225,7 +225,7 @@ import os
 import subprocess
 import glob
 
-def submit_restart_runs(rdir, job_name, analysisonly=False, cores=2, time="30:00:00", mem="30G", 
+def submit_restart_runs(rdir, job_name, iteration, analysisonly=False, cores=2, time="30:00:00", mem="30G", 
                         lmp_path="~/0__treadmilling/0__treadmilling_git/MD/lammpsSep21/src/lmp_serial",
                         analysis_script="/nfs/scistore26/saricgrp/fhorvath/0__treadmilling/2__synthase_setup/2__vary_potential_size/filament_analysis.ipynb",
                         env_setup="/nfs/scistore26/saricgrp/fhorvath/miniforge3/etc/profile.d",
@@ -242,6 +242,15 @@ def submit_restart_runs(rdir, job_name, analysisonly=False, cores=2, time="30:00
     for d in run_dirs:
         config_path = os.path.join(d, "config.sh")
         restart_path = os.path.join(d, "config_restart.sh")
+
+        import json
+        with open(d + "/parameters.json", "r") as f:
+            params = json.load(f)
+        tstep = params.get("tstep", 0)  
+        runtime = params.get("runtime", 0)  
+        nsteps = int(runtime / tstep)
+        #print(f"Runtime: {runtime}, Timestep: {tstep}, Nsteps: {nsteps}")
+        prev_run_length = nsteps  # Default to total nsteps 
 
         if not os.path.exists(config_path):
             print(f"Warning: {config_path} not found. Skipping.")
@@ -271,13 +280,18 @@ def submit_restart_runs(rdir, job_name, analysisonly=False, cores=2, time="30:00
                 for ext in [".dump", ".out", ".xyz"]:
                     if ext in line:
                         newline = line.replace(ext, f"_{iteration}{ext}")
+                        # print("original line:", line.strip())
+                        # print("modified line:", newline.strip())
+                        new_lines.append(newline)
                         break
+            
             
             elif line.startswith("run"):
                 ## extract previous run length
-                prev_run_length = int(line.split()[1])
-                new_run_length = prev_run_length - int(latest_restart)
-                print(f"Previous run length: {prev_run_length}, latest restart: {latest_restart}, new run length: {new_run_length}")
+                # prev_run_length = int(line.split()[1]) ## done via json parameters now
+                prev_runtime = int(latest_restart.split(".")[-1])
+                new_run_length = prev_run_length - prev_runtime # int(latest_restart)
+                print(f"Previous run length: {prev_run_length}, latest restart: {prev_runtime}, new run length: {new_run_length}")
                 new_lines.append(f"run {new_run_length}\n")
 
 
