@@ -24,7 +24,8 @@ import pickle
 import gzip
 from tqdm.notebook import tqdm
 
-def load_pickles_into_D(D, pkl_files, usedill=False):
+def load_pickles_into_D(D, pkl_files, #usedill=False
+):
     """
     Load specified .pkl/.pkl.gz or .dill/.dill.gz files into D[key] dicts.
 
@@ -35,8 +36,8 @@ def load_pickles_into_D(D, pkl_files, usedill=False):
     pkl_files : iterable of str
         Filenames to load relative to each rundir
         (e.g. produced by find_pkl_files).
-    usedill : bool, optional
-        If True, use dill.loads for all files (requires dill installed).
+    #usedill : bool, optional
+    #    If True, use dill.loads for all files (requires dill installed).
 
     Returns
     -------
@@ -45,13 +46,25 @@ def load_pickles_into_D(D, pkl_files, usedill=False):
     """
 
     # Select loader
-    if usedill:
-        import dill
-        if dill is None:
-            raise ImportError("usedill=True but 'dill' is not installed.")
-        loader = dill.load
-    else:
-        loader = pickle.load
+    def sel_loader(fname):
+        if ".pkl" in fname:
+            return pickle.load
+        elif ".dl" in fname:
+            import dill
+            return dill.load
+        elif ".feather" in fname:
+            import pyarrow.feather as feather
+            return feather.read_feather
+        else:
+            raise ImportError("filetype not recognized")
+    
+    # if usedill:
+    #     import dill
+    #     if dill is None:
+    #         raise ImportError("usedill=True but 'dill' is not installed.")
+    #     loader = dill.load
+    # else:
+    #     loader = pickle.load
 
     counter = 0
 
@@ -73,9 +86,11 @@ def load_pickles_into_D(D, pkl_files, usedill=False):
                 open_func = gzip.open if fname.endswith(".gz") else open
 
                 with open_func(target, "rb") as f:
-                    D[key][subkey] = loader(f)
+                    #D[key][subkey] = loader(f)
+                    D[key][subkey] = sel_loader(fname)(f)
 
                 counter += 1
+            
 
             except Exception as e:
                 print(f"Failed to load {target}: {e}")
