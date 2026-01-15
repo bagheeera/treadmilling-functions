@@ -64,3 +64,27 @@ def load_tif_as_array(path: str | Path, *,
         raise ValueError(f"Invalid normalize option: {normalize!r}")
 
     return img
+
+
+def imshow_kymograph(ax, imfile,
+                     showhalf=True,
+                     aspect=100,
+                     cmap="inferno"):
+    # extract diameter from filename
+    df_kymo = pd.read_csv("/nfs/scistore26/saricgrp/fhorvath/0__treadmilling/2__synthase_setup/9__midcell_condensation/8__check_lifetimes/C__wsynth_kymoparams/exp_data/ftsz_dynamics_div_state_categories.csv")
+    def extract_diamter_in_nm(img, df= df_kymo):
+        diam = df[df["Image_ROI_Name"].str.contains(
+            img.split("/")[-1].split(".tif")[0],
+            na=False
+        )]["DiameterNm"].values[0]
+        return diam
+    img = load_tif_as_array(imfile) # [2]
+    if showhalf:
+        img = img[:,:img.shape[1]//2]
+
+    diameter = extract_diamter_in_nm(imfile)
+    ax.imshow(img,
+        origin="lower",
+                aspect=aspect,
+                cmap=cmap,
+                extent=[0, diameter*np.pi, 0, img.shape[0]])
