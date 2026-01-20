@@ -70,7 +70,8 @@ import numpy as np
 def imshow_kymograph(ax, imfile,
                      showhalf=True,
                      aspect=100,
-                     cmap="inferno"):
+                     cmap="inferno", 
+                     return_extent=False):
     # extract diameter from filename
     df_kymo = pd.read_csv("/nfs/scistore26/saricgrp/fhorvath/0__treadmilling/2__synthase_setup/9__midcell_condensation/8__check_lifetimes/C__wsynth_kymoparams/exp_data/ftsz_dynamics_div_state_categories.csv")
     def extract_diamter_in_nm(img, df= df_kymo):
@@ -84,11 +85,14 @@ def imshow_kymograph(ax, imfile,
         img = img[:,:img.shape[1]//2]
 
     diameter = extract_diamter_in_nm(imfile)
+    extent = [0, diameter*np.pi, 0, img.shape[0]]
     ax.imshow(img,
         origin="lower",
                 aspect=aspect,
                 cmap=cmap,
-                extent=[0, diameter*np.pi, 0, img.shape[0]])
+                extent=extent)
+    if return_extent:
+        return extent
 
 def normalized_kymo_roughness(key, D, startfrom=0):
     """as in load_tif_as_array from https://jupyterhub.ista.ac.at/user/fhorvath/lab/workspaces/auto-g/tree/0__treadmilling/2__synthase_setup/9__midcell_condensation/8__check_lifetimes/C__wsynth_kymoparams/notebooks/kymograph_analysis.ipynb"""
@@ -132,6 +136,9 @@ def plot_sim_exp_comparison(
     show=True,
     savepath=None,
     marker_codes=["p", "D", "s"],
+    sim_lines=None,
+    exp_lines=None,
+    line_kwargs=None,
 ):
     """
     Create a 4-panel comparison plot between simulation and experiment.
@@ -176,6 +183,8 @@ def plot_sim_exp_comparison(
         Whether to call plt.show().
     savepath : str or None
         If given, saves figure to this path.
+    sim_lines / exp_lines : list of ((x0, y0), (x1, y1))
+        Coordinates must be in *imshow extent coordinates*.
 
 plot_sim_exp_comparison(
     key=highlight_keys[1],
@@ -188,17 +197,21 @@ plot_sim_exp_comparison(
 )
     """
 
+    if line_kwargs is None:
+        line_kwargs = dict(color="k", ls="--", lw=1.5)
+
     fig, ax = plt.subplots(
         1, 4,
         figsize=(scale * figsize_base[0], scale * figsize_base[1])
     )
 
-    # --- Panel 0: monomer lifetimes ---
+    # =========================
+    # Panel 0: monomer lifetimes
+    # =========================
     ax[0].set_title("Monomer lifetimes")
     lifetimes_plot(key, ax[0], D)
     ax[0].set_ylabel("Probability")
 
-    # Placeholder marker (for legend consistency)
     ax[0].scatter(
         0, 0,
         marker=marker_codes[0],
@@ -207,31 +220,57 @@ plot_sim_exp_comparison(
         facecolors="none",
     )
 
-    # --- Panel 1: simulated kymograph ---
+    # =========================
+    # Panel 1: simulated kymograph
+    # =========================
+    sim_extent = (0, 2 * 5 * 242, 0, kymo_window)
+
     ax[1].imshow(
         D[key]["center_xcounts"][t0:t0 + kymo_window, ::skip],
         interpolation="bicubic",
         aspect=aspect_sim,
         cmap=cmap,
-        extent=(0, 2 * 5 * 242, 0, kymo_window),
+        extent=sim_extent,
         origin="lower",
     )
+
     ax[1].set_title("Simulated kymograph")
     ax[1].set_ylabel("Time (s)")
     ax[1].set_xlabel("Circumference")
 
-    # --- Panel 2: experimental kymograph ---
-    fct.kymo.imshow_kymograph(
+    if sim_lines is not None:
+        for (x0, y0), (x1, y1) in sim_lines:
+            ax[1].plot([x0, x1], [y0, y1], **line_kwargs)
+            slope = (y1 - y0) / (x1 - x0)
+            # print(f"[Simulation] slope = {slope:.4g} (Δy/Δx)")
+            print(f"[Simulation] speed = {1/slope:.4g} (nm/s)")
+
+    # =========================
+    # Panel 2: experimental kymograph
+    # =========================
+    exp_extent = fct.kymo.imshow_kymograph(
         ax[2],
         exp_images[2],
         cmap=cmap,
         aspect=aspect_exp,
+        return_extent=True,   # ⬅ small change needed (see note below)
     )
+
     ax[2].set_title("Experimental kymograph")
     ax[2].set_ylabel("Time (s)")
     ax[2].set_xlabel("Circumference (nm)")
 
-    # --- Panel 3: intensity variation ---
+    if exp_lines is not None:
+        for (x0, y0), (x1, y1) in exp_lines:
+            ax[2].plot([x0, x1], [y0, y1], **line_kwargs)
+            slope = (y1 - y0) / (x1 - x0)
+            # print(f"[Experiment] slope = {slope:.4g} (Δy/Δx)")
+            print(f"[Experiment] speed = {1/slope:.4g} (nm/s)")
+
+
+    # =========================
+    # Panel 3: intensity variation
+    # =========================
     img = fct.kymo.normalized_kymo_roughness(key, D)
     std_sim = img.std(axis=1)
 
@@ -260,7 +299,7 @@ plot_sim_exp_comparison(
     fig.tight_layout()
 
     if savepath is not None:
-        fig.savefig(savepath, dpi=300, bbox_inches="tight")
+        fig.savefig(savepath, dpi=200, bbox_inches="tight")
 
     if show:
         plt.show()
