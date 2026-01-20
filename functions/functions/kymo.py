@@ -65,7 +65,8 @@ def load_tif_as_array(path: str | Path, *,
 
     return img
 
-
+import pandas as pd
+import numpy as np
 def imshow_kymograph(ax, imfile,
                      showhalf=True,
                      aspect=100,
@@ -88,3 +89,224 @@ def imshow_kymograph(ax, imfile,
                 aspect=aspect,
                 cmap=cmap,
                 extent=[0, diameter*np.pi, 0, img.shape[0]])
+
+def normalized_kymo_roughness(key, D, startfrom=0):
+    """as in load_tif_as_array from https://jupyterhub.ista.ac.at/user/fhorvath/lab/workspaces/auto-g/tree/0__treadmilling/2__synthase_setup/9__midcell_condensation/8__check_lifetimes/C__wsynth_kymoparams/notebooks/kymograph_analysis.ipynb"""
+    if "center_xcounts" in D[key]:
+        img = D[key]["center_xcounts"]
+    else: 
+        img = D[key]["center_xcounts_wider"]
+    img = img[startfrom:,:]
+    img -= img.min()
+    ptp = np.ptp(img)
+    if ptp > 0:
+        img = img / ptp
+    else:
+        img[:] = 0.0  # flat image → normalized to 0
+
+    return img
+
+def load_kymo_stds():
+    import pickle
+    with open("/nfs/scistore26/saricgrp/fhorvath/0__treadmilling/2__synthase_setup/9__midcell_condensation/8__check_lifetimes/C__wsynth_kymoparams/exp_data/kymo_STDs.pkl", "rb") as f:
+        kymo_stds = pickle.load(f)
+    return kymo_stds
+
+import matplotlib.pyplot as plt
+def plot_sim_exp_comparison(
+    key,
+    D,
+    lifetimes_plot,
+    fct,
+    exp_images,
+    t0=400,
+    marker_size=10,
+    skip=4,
+    scale=1.3,
+    cmap="plasma",
+    aspect_sim=40,
+    aspect_exp=60,
+    kymo_window=120,
+    ylim_std=39.5,
+    figsize_base=(7.5, 2.5),
+    show=True,
+    savepath=None,
+    marker_codes=["p", "D", "s"],
+):
+    """
+    Create a 4-panel comparison plot between simulation and experiment.
+
+    Parameters
+    ----------
+    key : tuple
+        Parameter key used to index D.
+    D : dict
+        Data dictionary.
+    lifetimes_plot : callable
+        Function that plots monomer lifetimes into a given axis.
+    fct : module or namespace
+        Must provide fct.kymo.imshow_kymograph,
+        fct.kymo.normalized_kymo_roughness,
+        fct.kymo.load_kymo_stds.
+    exp_images : list
+        Experimental kymograph images.
+    marker_codes : list
+        Marker codes used for legend placeholders.
+    t0 : int, default 400
+        Start time index for kymograph slice.
+    marker_size : int
+        Marker size for placeholder scatter.
+    skip : int
+        Spatial downsampling for simulated kymograph.
+    scale : float
+        Overall figure scaling factor.
+    cmap : str
+        Colormap for kymographs.
+    aspect_sim : float
+        Aspect ratio for simulated kymograph.
+    aspect_exp : float
+        Aspect ratio for experimental kymograph.
+    kymo_window : int
+        Number of time points shown in kymograph.
+    ylim_std : float
+        Upper y-limit for std histogram.
+    figsize_base : tuple
+        Base figure size before scaling.
+    show : bool
+        Whether to call plt.show().
+    savepath : str or None
+        If given, saves figure to this path.
+
+plot_sim_exp_comparison(
+    key=highlight_keys[1],
+    D=D,
+    lifetimes_plot=lifetimes_plot,
+    fct=fct,
+    exp_images=exp_images,
+    marker_codes=marker_codes,
+    t0=800,
+)
+    """
+
+    fig, ax = plt.subplots(
+        1, 4,
+        figsize=(scale * figsize_base[0], scale * figsize_base[1])
+    )
+
+    # --- Panel 0: monomer lifetimes ---
+    ax[0].set_title("Monomer lifetimes")
+    lifetimes_plot(key, ax[0], D)
+    ax[0].set_ylabel("Probability")
+
+    # Placeholder marker (for legend consistency)
+    ax[0].scatter(
+        0, 0,
+        marker=marker_codes[0],
+        s=marker_size / 4,
+        edgecolor="k",
+        facecolors="none",
+    )
+
+    # --- Panel 1: simulated kymograph ---
+    ax[1].imshow(
+        D[key]["center_xcounts"][t0:t0 + kymo_window, ::skip],
+        interpolation="bicubic",
+        aspect=aspect_sim,
+        cmap=cmap,
+        extent=(0, 2 * 5 * 242, 0, kymo_window),
+        origin="lower",
+    )
+    ax[1].set_title("Simulated kymograph")
+    ax[1].set_ylabel("Time (s)")
+    ax[1].set_xlabel("Circumference")
+
+    # --- Panel 2: experimental kymograph ---
+    fct.kymo.imshow_kymograph(
+        ax[2],
+        exp_images[2],
+        cmap=cmap,
+        aspect=aspect_exp,
+    )
+    ax[2].set_title("Experimental kymograph")
+    ax[2].set_ylabel("Time (s)")
+    ax[2].set_xlabel("Circumference (nm)")
+
+    # --- Panel 3: intensity variation ---
+    img = fct.kymo.normalized_kymo_roughness(key, D)
+    std_sim = img.std(axis=1)
+
+    kymo_stds = fct.kymo.load_kymo_stds()
+    std_exp = kymo_stds["Constricting"]
+
+    for data, label in zip(
+        [std_sim, std_exp],
+        ["Simulation", "Experiment"]
+    ):
+        ax[3].hist(
+            data,
+            bins=40,
+            histtype="step",
+            density=True,
+            lw=2,
+            label=label,
+        )
+
+    ax[3].legend()
+    ax[3].set_xlabel(r"$\mathrm{std}(\tilde{I}(t))$")
+    ax[3].set_ylabel("Density")
+    ax[3].set_title("Intensity variation")
+    ax[3].set_ylim(top=ylim_std)
+
+    fig.tight_layout()
+
+    if savepath is not None:
+        fig.savefig(savepath, dpi=300, bbox_inches="tight")
+
+    if show:
+        plt.show()
+
+    return fig, ax
+
+
+def lifetimes_plot(key, ax, D, overlay=None, convert_to_probab=True,
+        expcolor="k"
+        ):
+        exp = np.genfromtxt("/nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/0__ring/D__wsynth/B__switchtime/data/exp_lifetimes.dat", delimiter=",")
+        shortest_time = exp[:,0][0]
+        longest = exp[:,0][-1]
+        bins =   exp[:,0][:-1] - np.diff(exp[:,0])/2
+
+        if "monomer_lifetimes" in D[key]:
+            lt = D[key]["monomer_lifetimes"] #/ dict(key)["tscale"]
+            # choose the same bin edges you used for the density version
+            edges = bins                       # e.g. np.linspace(0, longest, 30)
+            
+            # plain counts
+
+    
+            counts, edges = np.histogram(
+                lt[(lt > 3) & (lt < longest)].values,
+                bins=edges,
+                density=False                 # <- important: keep raw counts
+            )
+            
+            # convert counts → probabilities so they sum to 1
+            probs = counts / counts.sum()
+            
+            # plot at the *centres* of the bins so the shape lines up nicely
+            centres = (edges[:-1] + edges[1:]) / 2
+            
+
+            lines = ax.plot(centres, probs, #color="tab:blue", 
+                    marker="o", label="Simulation" if overlay is None else overlay)
+            ax.plot(*exp.T, color=expcolor,
+                    label="Experiment" if overlay is None else None, marker="o")
+            ax.axvline(x=np.mean(lt[(lt > 3) & (lt < longest)].values), 
+                       color=lines[0].get_color()
+                      )
+            ax.axvline(x=8.2, color=expcolor,
+                       ls="--")
+            ax.set_xlabel("Lifetime (s)")
+           # ax.set_ylabel("Relative frequency")
+
+            ax.legend()

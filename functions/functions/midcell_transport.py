@@ -642,3 +642,5 @@ def compute_max_age_profiles(df, times, y_range=(-35, 35), nbins_y=30):
 
         profiles[t] = result_df
     return profiles
+
+

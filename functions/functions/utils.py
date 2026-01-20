@@ -171,6 +171,15 @@ def build_rundir_dict(rundirs, params, prm_sets, runtag):
     return D
 
 
+def load_runs(fname="*starting_lammps.txt", 
+                wdir=".",
+):
+    pkl = find(fname, wdir)
+    params, prm_sets = parameters_and_paramsets(pkl)
+    rundirs = find_runfiles_dirs(wdir)
+    D = build_rundir_dict(rundirs, params, prm_sets, runtag)
+    return D, params, prm_sets
+
 import subprocess
 import time
 
@@ -378,7 +387,8 @@ import os
 import subprocess
 
 def submit_runs(rdir, job_name, analysisonly=False, cores=2, time="30:00:00", mem="30G", 
-                 lmp_path="~/0__treadmilling/0__treadmilling_git/MD/lammpsSep21/src/lmp_serial",
+                #  lmp_path="~/0__treadmilling/0__treadmilling_git/MD/lammpsSep21/src/lmp_serial",
+                lmp_path="/nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/lammps_molid/lammps/build/lmp",
                  analysis_script="/nfs/scistore26/saricgrp/fhorvath/0__treadmilling/2__synthase_setup/2__vary_potential_size/filament_analysis.ipynb",
                  env_setup="/nfs/scistore26/saricgrp/fhorvath/miniforge3/etc/profile.d",
                  dontsubmit=False, additional_analysis=None, analyzefilaments=True):
