@@ -435,3 +435,57 @@ def load_pretty_figure_setup():
 
     rc_params_setup()
     print("Pretty figure set-up loaded.")  
+
+
+
+
+def save_fig(fig, name, sources, notes="", footersize=4, notebook_name=""):
+    """
+    Save a matplotlib figure with organized metadata and a descriptive footer.
+
+    Parameters
+    ----------
+    fig : matplotlib.figure.Figure
+        The figure object to save.
+    name : str
+        Name for this figure folder and file.
+    sources : list of str
+        Paths to the simulation runs or data used to make this figure.
+    notes : str
+        Additional notes (optional).
+    """
+    from pathlib import Path
+    from datetime import datetime
+    import yaml
+    import matplotlib.pyplot as plt
+
+    # Full path and notebook name for footer
+    full_path = str(Path.cwd().resolve())
+    # notebook_name = Path.cwd().name  # assumes you are in the notebook directory
+    timestamp = datetime.now().isoformat()
+    footer_text = f"{full_path} | {timestamp}"
+
+    # Add footer to figure
+    fig.text(0.01, 0.01, footer_text, 
+             fontsize=footersize, alpha=0.6)
+
+    # Create folder for figure
+    out = Path("../results") / name
+    out.mkdir(parents=True, exist_ok=True)
+
+    # Save figure with descriptive filenames
+    fig.savefig(out / f"{name}.png", dpi=300)
+    fig.savefig(out / f"{name}.svg")
+
+    # Save metadata
+    meta = {
+        "sources": sources,
+        "notebook": notebook_name,
+        "created": timestamp,
+        "notes": notes
+    }
+
+    with open(out / "meta.yaml", "w") as f:
+        yaml.dump(meta, f)
+
+    print(f"Figure saved: {out}/{name}.png and .pdf with metadata")
