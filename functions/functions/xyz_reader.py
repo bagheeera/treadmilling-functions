@@ -99,3 +99,96 @@ def read_xyz(tdir="./", batch_size=100, filename="output.xyz"):
                                   batch_size=batch_size,
                                   filename=filename), ignore_index=True)
     return df_all
+
+## write out xyz
+from multiprocessing import Pool
+
+# ---------------------------------------------------------------------
+# Header template
+# ---------------------------------------------------------------------
+HEADER_TEXT = """ITEM: TIMESTEP
+YYY
+ITEM: NUMBER OF ATOMS
+XXX
+ITEM: BOX BOUNDS pp pp pp
+-2.4200000000000000e+02 2.4200000000000000e+02
+-1.0000000000000000e+02 1.0000000000000000e+02
+-4.2500000000000000e+00 4.2500000000000000e+00
+ITEM: ATOMS v_vStep id mol type x y
+"""
+
+
+# ---------------------------------------------------------------------
+# Row formatter
+# ---------------------------------------------------------------------
+def format_row(row):
+    return (
+        ' ' * 5 +
+        ' '.join(
+            str(int(x)) if i < 4 else f'{x:.2f}'
+            for i, x in enumerate(row)
+        )
+    )
+
+
+# ---------------------------------------------------------------------
+# Chunk processor (pure function)
+# ---------------------------------------------------------------------
+def process_chunk(args):
+    t, df_chunk = args
+
+    lines = []
+    lines.append(
+        HEADER_TEXT
+        .replace("YYY", str(t))
+        .replace("XXX", str(len(df_chunk)))
+    )
+
+    for _, row in df_chunk.iterrows():
+        lines.append(format_row(row) + "\n")
+
+    return "".join(lines)
+
+
+# ---------------------------------------------------------------------
+# Main writer
+# ---------------------------------------------------------------------
+def write_custom_xyz(
+    df,
+    output_file,
+    skip=1,
+    nprocesses=1,
+    time_col="time"
+):
+    """
+    Write a LAMMPS-style XYZ trajectory from a DataFrame.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Input data
+    output_file : str
+        Output .xyz filename
+    skip : int, optional
+        Write every `skip`-th timestep
+    nprocesses : int, optional
+        Number of worker processes (1 = serial)
+    time_col : str, optional
+        Name of the time column
+    """
+
+    sel_columns = [c for c in df.columns if c != time_col]
+
+    time_chunks = [
+        (t, df[df[time_col] == t][sel_columns])
+        for t in df[time_col].unique()[::skip]
+    ]
+
+    if nprocesses == 1:
+        blocks = map(process_chunk, time_chunks)
+    else:
+        with Pool(processes=nprocesses) as pool:
+            blocks = pool.map(process_chunk, time_chunks)
+
+    with open(output_file, "w") as f:
+        f.writelines(blocks)
