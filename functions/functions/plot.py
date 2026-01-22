@@ -437,7 +437,15 @@ def load_pretty_figure_setup():
     print("Pretty figure set-up loaded.")  
 
 
+def create_footer():
+    from pathlib import Path
+    from datetime import datetime
 
+    # Full path and notebook name for footer
+    full_path = str(Path.cwd().resolve())
+    timestamp = datetime.now().isoformat()
+    footer_text = f"{full_path} | {timestamp}"
+    return footer_text
 
 def save_fig(fig, name, sources, notes="", footersize=4, notebook_name=""):
     """
@@ -460,10 +468,10 @@ def save_fig(fig, name, sources, notes="", footersize=4, notebook_name=""):
     import matplotlib.pyplot as plt
 
     # Full path and notebook name for footer
-    full_path = str(Path.cwd().resolve())
-    # notebook_name = Path.cwd().name  # assumes you are in the notebook directory
-    timestamp = datetime.now().isoformat()
-    footer_text = f"{full_path} | {timestamp}"
+    # full_path = str(Path.cwd().resolve())
+    # # notebook_name = Path.cwd().name  # assumes you are in the notebook directory
+    # timestamp = datetime.now().isoformat()
+    footer_text = create_footer() #f"{full_path} | {timestamp}"
 
     # Add footer to figure
     fig.text(0.01, 0.01, footer_text, 
