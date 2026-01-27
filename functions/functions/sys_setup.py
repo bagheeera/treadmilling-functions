@@ -44,6 +44,10 @@ def write_templates(parameter_values, base_values, template, dontwrite=False, ad
     combinations = list(itertools.product(*parameter_values.values()))
     print(len(combinations))
 
+    for key in parameter_values:
+        if "_" in key:
+            raise ValueError('parameter contains _, will mess up detection of keys from directorynames later on!')
+
     if not dontwrite:
         for values in tqdm(combinations):
             param_combination = dict(zip(param_keys, values))

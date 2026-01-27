@@ -50,7 +50,9 @@ def plot_func(
             raise ValueError(f"Exact time {t} not found in df['time']")
         t_frame = t
 
-    fig, ax = plt.subplots(figsize=figsize)
+    fig, ax = plt.subplots(figsize=figsize,
+                            # constrained_layout=True
+                            )
 
     scatter_fct(df, ax, t_frame, **scatter_kwargs, **kwargs)
 
@@ -267,6 +269,7 @@ def plot_panels_with_hist(
     scatter_kwargs=None,
     show=True,
     savepath=None,
+    histxlim=None
 ):
     """
     Combined transport scatter plot with vertical density histograms.
@@ -355,6 +358,8 @@ def plot_panels_with_hist(
 
     ax1.set_xlabel("Density")
     ax1.legend()
+    if histxlim is not None:
+        ax1.set_xlim(*histxlim)
     ax1.set_ylim(-y_window * y_scale, y_window * y_scale)
 
     # === axis consistency ===
@@ -644,3 +649,230 @@ def compute_max_age_profiles(df, times, y_range=(-35, 35), nbins_y=30):
     return profiles
 
 
+import numpy as np
+import matplotlib.pyplot as plt
+
+def plot_division(df, ax,
+                  plot_processive=True,
+                  plot_type6=True,
+                  display_time=False,
+                  display_legend=True,
+                  tracewindow=0,   # number of previous frames to show traces
+                  add_arrows=False, # add arrows to type 5 (→) and type 9 (←)
+                  synths=6,
+                  hideticklabels=False,
+                  ylim=30,
+                  sZ=1):
+    """
+    Plot the current frame of a filament/division dataset.
+    
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame containing columns 'time', 'x', 'y', 'type'.
+    ax : matplotlib.axes.Axes
+        Axis on which to draw.
+    Other parameters:
+        See function signature.
+    """
+    # Get latest frame
+    D = df[df["time"] == df["time"].max()]
+    
+    # Separate types
+    D_filament = D[D["type"].isin([1,2,3])]
+    D_divi = D[D["type"].isin([5,6])]
+    
+    # Plot filaments
+    ax.scatter(D_filament["x"]*5, D_filament["y"]*5, c='#4cc9f0', s=sZ)
+    
+    # Plot type 6 (division) if requested
+    if plot_type6 and not D_divi.empty:
+        ax.scatter(D_divi["x"]*5, D_divi["y"]*5, c="#f72585", s=synths, marker="s")
+        
+        # Optional quantile lines for type 5/6 division
+        for q in [0.2, 0.8]:
+            mask = abs(D_divi["y"]) < 30
+            if mask.any():
+                quant = np.quantile(D_divi.loc[mask, "y"]*5, q)
+                ax.hlines(y=quant, xmin=df["x"].min()*5, xmax=df["x"].max()*5, ls="--", lw=1,
+                          color="#f72585", alpha=0.7)
+    
+    # Axes settings
+    ax.set_xlim(df["x"].min()*5, df["x"].max()*5)
+    ax.set_ylim(-ylim*5, ylim*5)
+    ax.set_aspect("equal")
+    
+    if hideticklabels:
+        ax.set_xticklabels([])
+        ax.set_xticks([])
+        ax.set_yticklabels([])
+        ax.set_yticks([])
+    
+    if display_time:
+        t_frame = df["time"].max()
+        ax.set_title(f"Time: {t_frame:.1f}")
+
+
+import os
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
+import functions as fct
+
+def plot_demograph_for_key(
+    key,
+    D,
+    t_select=1500,
+    time_step=10,
+    y_lim=60,
+    hist_y_cut=40,
+    synth_y_cut=30,
+    heatmap_bins=(-40, 40, 70),
+    cmap="RdPu",
+    scale=0.8,
+    fct=fct,
+    savepath=None,
+    histo_bins=40
+):
+    """
+    Generate heatmap + final-time histogram for a single key.
+
+    Parameters
+    ----------
+    key : hashable
+        Key identifying the run in D
+    D : dict
+        Data dictionary containing rundir and storage for results
+    t_select : int
+        Time point used for final distributions
+    time_step : int
+        Time bin width
+    y_lim : float
+        Y-axis limit for plots (nm)
+    hist_y_cut : float
+        Absolute y-cut for histogram preprocessing
+    synth_y_cut : float
+        Absolute y-cut for synth histogram
+    heatmap_bins : tuple
+        (ymin, ymax, nbins) for heatmap histograms
+    cmap : str
+        Colormap for heatmap
+    scale : float
+        Overall figure scaling
+    """
+
+    print(key)
+    print(os.path.join(os.getcwd(), D[key]["rundir"]))
+    # --- Load and preprocess ---
+    df = fct.utils.load(D[key]["rundir"])
+    df = df[df["time"] < t_select]
+
+    timebins = np.arange(0, int(df["time"].values[-1]), time_step)
+
+    # --- Z quantiles (types 1,2,3) ---
+    filtered = df[
+        df["type"].isin([1, 2, 3]) & df["time"].isin(timebins)
+    ].copy()
+
+    quantiles = [
+        filtered.groupby("time")["y"].quantile(q)
+        for q in (0.2, 0.8)
+    ]
+
+    D[key]["Zquantiles_.2"] = quantiles
+
+    # --- Synth histograms over time (type 5) ---
+    df_synth_all = df[df["type"] == 5]
+
+    ymin, ymax, nbins = heatmap_bins
+    ybins_heat = np.linspace(ymin, ymax, nbins)
+
+    histos = [
+        np.histogram(
+            df_synth_all[df_synth_all["time"] == t]["y"],
+            bins=ybins_heat,
+        )[0]
+        for t in timebins
+    ]
+
+    D[key]["synth_histos"] = histos
+
+    # --- Final-time histograms ---
+    df = fct.utils.load(D[key]["rundir"])
+    df = df[np.abs(df["y"]) < hist_y_cut]
+
+    df_Z = df[
+        (df["time"] == t_select) &
+        (df["type"].isin([1, 2, 3]))
+    ]
+
+    df_synth = df[
+        (df["time"] == t_select) &
+        (df["type"].isin([5, 6]))
+    ]
+    df_synth = df_synth[np.abs(df_synth["y"]) < synth_y_cut]
+
+    ybins = np.linspace(df["y"].min(), df["y"].max(), histo_bins)
+    y_centers = (ybins[:-1] + ybins[1:]) / 2
+
+    y_counts_Z, _ = np.histogram(df_Z["y"], bins=ybins, density=True)
+    y_counts_synth, _ = np.histogram(df_synth["y"], bins=ybins, density=True)
+
+    # --- Plot ---
+    fig = plt.figure(figsize=(scale * 9, scale * 3.5))
+    gs = gridspec.GridSpec(1, 2, width_ratios=[3, 1], wspace=0.05)
+
+    ax = fig.add_subplot(gs[0])
+    ax_hist = fig.add_subplot(gs[1], sharey=ax)
+
+    # Heatmap
+    im = ax.imshow(
+        np.array(histos).T,
+        origin="lower",
+        extent=(0, time_step * len(timebins), -5 * 40, 5 * 40),
+        aspect="auto",
+        cmap=cmap,
+    )
+    fig.colorbar(im, ax=ax, label="Count")
+
+    for q in quantiles:
+        ax.plot(
+            time_step * np.arange(len(q)),
+            5 * q,
+            color="#4cc9f0",
+            ls="--",
+            lw=2,
+        )
+
+    ax.plot([], ls="--", lw=2, color="#4cc9f0", label="Z-ring outline")
+    ax.set_xlabel("Time (s)")
+    ax.set_ylabel("Long cell axis (nm)")
+    ax.set_ylim(-y_lim, y_lim)
+    ax.set_title("Synthase distribution")
+    ax.legend(loc="upper left")
+
+    # Histogram
+    ax_hist.plot(
+        y_counts_Z, y_centers,
+        drawstyle="steps-mid",
+        color="#4cc9f0",
+        lw=2,
+        label="FtsZ",
+    )
+    ax_hist.plot(
+        y_counts_synth, y_centers,
+        drawstyle="steps-mid",
+        color="#fea6c0",
+        lw=2,
+        label="Synthase",
+    )
+
+    ax_hist.set_xlabel("Density")
+    ax_hist.set_title("Final distributions")
+    ax_hist.legend()
+    plt.setp(ax_hist.get_yticklabels(), visible=False)
+
+    # plt.tight_layout()
+    if savepath is not None:
+        fig.savefig(savepath, bbox_inches="tight", dpi=300)
+    plt.show()

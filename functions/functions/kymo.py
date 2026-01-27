@@ -71,7 +71,8 @@ def imshow_kymograph(ax, imfile,
                      showhalf=True,
                      aspect=100,
                      cmap="inferno", 
-                     return_extent=False):
+                     return_extent=False,
+                     cropy=None):
     # extract diameter from filename
     df_kymo = pd.read_csv("/nfs/scistore26/saricgrp/fhorvath/0__treadmilling/2__synthase_setup/9__midcell_condensation/8__check_lifetimes/C__wsynth_kymoparams/exp_data/ftsz_dynamics_div_state_categories.csv")
     def extract_diamter_in_nm(img, df= df_kymo):
@@ -81,6 +82,10 @@ def imshow_kymograph(ax, imfile,
         )]["DiameterNm"].values[0]
         return diam
     img = load_tif_as_array(imfile) # [2]
+    if cropy is not None:
+        # print(img.shape)
+        img = img[:-cropy, :]
+        # print(img.shape)
     if showhalf:
         img = img[:,:img.shape[1]//2]
 
@@ -139,6 +144,8 @@ def plot_sim_exp_comparison(
     sim_lines=None,
     exp_lines=None,
     line_kwargs=None,
+    cropy_expkymo=None,
+    titlepad=6,
 ):
     """
     Create a 4-panel comparison plot between simulation and experiment.
@@ -202,24 +209,28 @@ plot_sim_exp_comparison(
 
     fig, ax = plt.subplots(
         1, 4,
-        figsize=(scale * figsize_base[0], scale * figsize_base[1])
+        figsize=(scale * figsize_base[0], scale * figsize_base[1]),
+        # constrained_layout=True
     )
 
     # =========================
     # Panel 0: monomer lifetimes
     # =========================
-    ax[0].set_title("Monomer lifetimes")
-    lifetimes_plot(key, ax[0], D)
+    ax[0].set_title("Monomer lifetimes", pad=titlepad)
+    lifetimes_plot(key, ax[0], D, show_means=False, expcolor="C1")
     ax[0].set_ylabel("Probability")
 
     ax[0].scatter(
-        0, 0,
+        # -5,0.15,
+        -0.4, 0.5,                     # x < 0 → left of axis
+        transform=ax[0].transAxes,      # axes (0–1) coordinates
         marker=marker_codes[0],
-        s=marker_size / 4,
+        s=marker_size,
         edgecolor="k",
         facecolors="none",
+        clip_on=False,  
     )
-
+    
     # =========================
     # Panel 1: simulated kymograph
     # =========================
@@ -234,9 +245,9 @@ plot_sim_exp_comparison(
         origin="lower",
     )
 
-    ax[1].set_title("Simulated kymograph")
+    ax[1].set_title("Simulated kymograph", pad=titlepad)
     ax[1].set_ylabel("Time (s)")
-    ax[1].set_xlabel("Circumference")
+    ax[1].set_xlabel("Circumference (nm)")
 
     if sim_lines is not None:
         for (x0, y0), (x1, y1) in sim_lines:
@@ -253,10 +264,11 @@ plot_sim_exp_comparison(
         exp_images[2],
         cmap=cmap,
         aspect=aspect_exp,
+        cropy=cropy_expkymo,
         return_extent=True,   # ⬅ small change needed (see note below)
     )
 
-    ax[2].set_title("Experimental kymograph")
+    ax[2].set_title("Experimental kymograph", pad=titlepad)
     ax[2].set_ylabel("Time (s)")
     ax[2].set_xlabel("Circumference (nm)")
 
@@ -293,13 +305,15 @@ plot_sim_exp_comparison(
     ax[3].legend()
     ax[3].set_xlabel(r"$\mathrm{std}(\tilde{I}(t))$")
     ax[3].set_ylabel("Density")
-    ax[3].set_title("Intensity variation")
+    ax[3].set_title("Intensity variation", pad=titlepad)
     ax[3].set_ylim(top=ylim_std)
 
+    
     fig.tight_layout()
+    # fig.subplots_adjust(left=0.72)
 
     if savepath is not None:
-        fig.savefig(savepath, dpi=200, bbox_inches="tight")
+        fig.savefig(savepath, dpi=200, bbox_inches="tight", pad_inches=0.5)
 
     if show:
         plt.show()
@@ -308,7 +322,9 @@ plot_sim_exp_comparison(
 
 
 def lifetimes_plot(key, ax, D, overlay=None, convert_to_probab=True,
-        expcolor="k"
+        expcolor="k", show_means=True,
+        sim_lw=1,
+        leg_title=None
         ):
         exp = np.genfromtxt("/nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/0__ring/D__wsynth/B__switchtime/data/exp_lifetimes.dat", delimiter=",")
         shortest_time = exp[:,0][0]
@@ -337,15 +353,22 @@ def lifetimes_plot(key, ax, D, overlay=None, convert_to_probab=True,
             
 
             lines = ax.plot(centres, probs, #color="tab:blue", 
+                            lw=sim_lw,
                     marker="o", label="Simulation" if overlay is None else overlay)
             ax.plot(*exp.T, color=expcolor,
                     label="Experiment" if overlay is None else None, marker="o")
-            ax.axvline(x=np.mean(lt[(lt > 3) & (lt < longest)].values), 
-                       color=lines[0].get_color()
-                      )
-            ax.axvline(x=8.2, color=expcolor,
-                       ls="--")
+            if show_means:
+                ax.axvline(x=np.mean(lt[(lt > 3) & (lt < longest)].values), 
+                        color=lines[0].get_color()
+                        )
+                ax.axvline(x=8.2, color=expcolor,
+                        ls="--")
             ax.set_xlabel("Lifetime (s)")
            # ax.set_ylabel("Relative frequency")
 
-            ax.legend()
+            if leg_title is None:
+                ax.legend()
+            else:
+                ax.legend(title=leg_title)
+
+

@@ -437,13 +437,15 @@ def load_pretty_figure_setup():
     print("Pretty figure set-up loaded.")  
 
 
-def create_footer():
+def create_footer(custompath=None):
     from pathlib import Path
     from datetime import datetime
 
     # Full path and notebook name for footer
     full_path = str(Path.cwd().resolve())
     timestamp = datetime.now().isoformat()
+    if custompath is not None:
+        full_path = custompath
     footer_text = f"{full_path} | {timestamp}"
     return footer_text
 
@@ -468,9 +470,8 @@ def save_fig(fig, name, sources, notes="", footersize=4, notebook_name=""):
     import matplotlib.pyplot as plt
 
     # Full path and notebook name for footer
-    # full_path = str(Path.cwd().resolve())
-    # # notebook_name = Path.cwd().name  # assumes you are in the notebook directory
-    # timestamp = datetime.now().isoformat()
+    full_path = str(Path.cwd().resolve())
+    timestamp = datetime.now().isoformat()
     footer_text = create_footer() #f"{full_path} | {timestamp}"
 
     # Add footer to figure
@@ -482,13 +483,13 @@ def save_fig(fig, name, sources, notes="", footersize=4, notebook_name=""):
     out.mkdir(parents=True, exist_ok=True)
 
     # Save figure with descriptive filenames
-    fig.savefig(out / f"{name}.png", dpi=300)
+    fig.savefig(out / f"{name}.png", dpi=300, bbox_inches="tight")
     fig.savefig(out / f"{name}.svg")
 
     # Save metadata
     meta = {
         "sources": sources,
-        "notebook": notebook_name,
+        "path": full_path,
         "created": timestamp,
         "notes": notes
     }
@@ -496,4 +497,4 @@ def save_fig(fig, name, sources, notes="", footersize=4, notebook_name=""):
     with open(out / "meta.yaml", "w") as f:
         yaml.dump(meta, f)
 
-    print(f"Figure saved: {out}/{name}.png and .pdf with metadata")
+    print(f"Figure saved: {out}/{name}.png and .svg with metadata")

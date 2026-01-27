@@ -252,3 +252,62 @@ def plot_rotation_angle(D, key, ax, overlay=None,
                             alpha=0.3)
         ax.plot(mean, label=overlay,
                 color=color if color is not None else None)
+
+
+def orientation_plot(ax, x_minmax, y_minmax, d_x_mean, d_y_mean, x_edges, y_edges,
+y_density=4, cut=300):
+
+    x_centers = (x_edges[:-1] + x_edges[1:]) / 2
+    y_centers = (y_edges[:-1] + y_edges[1:]) / 2
+
+    y_quiver_centers = y_centers[::y_density]
+
+    d_y_mean_quiver = d_y_mean.T[::y_density, :]
+    d_x_mean_quiver = d_x_mean.T[::y_density, :]
+
+    X, Y = np.meshgrid(x_centers, y_quiver_centers)
+
+    U = d_x_mean_quiver * 1000
+    V = d_y_mean_quiver * 1000
+
+    U = np.clip(U, -cut, cut)
+    V = np.clip(V, -cut, cut)
+
+
+    ## mark center
+    x0 = np.mean(x_centers)
+    y0 = np.mean(y_quiver_centers)
+    # inward vectors
+    RX = x0 - X
+    RY = y0 - Y
+
+    # calc cosine of the angle between the arrow direction and the inward normal
+    Rnorm = np.sqrt(RX**2 + RY**2)
+    RXn = RX / Rnorm
+    RYn = RY / Rnorm
+
+    Vnorm = np.sqrt(U**2 + V**2)
+
+    # avoid division by zero
+    mask = Vnorm > 0
+    Un = np.zeros_like(U)
+    Vn = np.zeros_like(V)
+
+    Un[mask] = U[mask] / Vnorm[mask]
+    Vn[mask] = V[mask] / Vnorm[mask]
+
+    C = Un * RXn + Vn * RYn
+
+
+
+    q = ax.quiver(
+        X, Y, U, V,
+        C,
+        cmap='bwr',
+        #vmin=-1, vmax=1,
+        pivot='mid',
+        scale_units='xy',
+        scale=5 #.01
+    )
+    #ax.colorbar(q, ax=ax, label="cosθ")
+    return ax

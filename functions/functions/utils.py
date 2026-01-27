@@ -10,7 +10,7 @@ import sys
 
 import os
 
-def check_dirs_with_file_without_file(dir_name=None, required_files=None, missing_files=None):
+def check_dirs_with_file_without_file(required_files=None, missing_files=None, dir_name="runfiles"):
     """
     Return a list of directories (searched recursively from cwd) whose name is `dir_name`,
     that contain ALL files in `required_files`, and contain NONE of the files in `missing_files`.
@@ -178,6 +178,7 @@ def load_runs(fname="*starting_lammps.txt",
     params, prm_sets = parameters_and_paramsets(pkl)
     rundirs = find_runfiles_dirs(wdir)
     D = build_rundir_dict(rundirs, params, prm_sets, runtag)
+    print(f"Loaded dict with {len(D)} keys")
     return D, params, prm_sets
 
 import subprocess
@@ -729,3 +730,8 @@ def find_files_recentlyunchanged(root_dir=".", minutes=10, fname="output.xyz", e
                     result.append(os.path.abspath(dirpath))
 
         return result
+
+def date_tag():
+    from datetime import datetime
+    date_tag = datetime.now().strftime("%Y%m%d")
+    return date_tag
