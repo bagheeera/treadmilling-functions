@@ -732,7 +732,8 @@ def plot_demograph_for_key(
     scale=0.8,
     fct=fct,
     savepath=None,
-    histo_bins=40
+    histo_bins=40,
+    quant=0.2,
 ):
     """
     Generate heatmap + final-time histogram for a single key.
@@ -776,7 +777,7 @@ def plot_demograph_for_key(
 
     quantiles = [
         filtered.groupby("time")["y"].quantile(q)
-        for q in (0.2, 0.8)
+        for q in (quant, 1-quant)
     ]
 
     D[key]["Zquantiles_.2"] = quantiles
@@ -808,11 +809,12 @@ def plot_demograph_for_key(
 
     df_synth = df[
         (df["time"] == t_select) &
-        (df["type"].isin([5, 6]))
+        (df["type"].isin([5]))
     ]
     df_synth = df_synth[np.abs(df_synth["y"]) < synth_y_cut]
 
-    ybins = np.linspace(df["y"].min(), df["y"].max(), histo_bins)
+    # ybins = np.linspace(df["y"].min(), df["y"].max(), histo_bins)
+    ybins = np.linspace(ymin, ymax, histo_bins)
     y_centers = (ybins[:-1] + ybins[1:]) / 2
 
     y_counts_Z, _ = np.histogram(df_Z["y"], bins=ybins, density=True)
@@ -829,7 +831,12 @@ def plot_demograph_for_key(
     im = ax.imshow(
         np.array(histos).T,
         origin="lower",
-        extent=(0, time_step * len(timebins), -5 * 40, 5 * 40),
+        extent = (
+            0,
+            time_step * len(timebins),
+            ymin,
+            ymax,
+        ),
         aspect="auto",
         cmap=cmap,
     )
@@ -849,7 +856,7 @@ def plot_demograph_for_key(
     ax.set_ylabel("Long cell axis (nm)")
     ax.set_ylim(-y_lim, y_lim)
     ax.set_title("Synthase distribution")
-    ax.legend(loc="upper left")
+    ax.legend(loc="center left")
 
     # Histogram
     ax_hist.plot(
@@ -875,4 +882,6 @@ def plot_demograph_for_key(
     # plt.tight_layout()
     if savepath is not None:
         fig.savefig(savepath, bbox_inches="tight", dpi=300)
-    plt.show()
+
+    return fig
+    #plt.show()
