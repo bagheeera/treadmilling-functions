@@ -689,11 +689,11 @@ from .analysis import read_xyz
 def load(rundir, dontwritedf=False):
     import pyarrow.feather as feather
     import os
-    if os.path.exists(rundir + "/output.feather"):
-        return feather.read_feather(rundir + "/output.feather")
     
-    elif os.path.exists(rundir + "/df.pkl.gz"):
+    if os.path.exists(rundir + "/df.pkl.gz"):
         return decompress_pickle(rundir + "/df.pkl.gz")   
+    elif os.path.exists(rundir + "/output.feather"):
+        return feather.read_feather(rundir + "/output.feather")
         
     elif os.path.exists(rundir + "/_df.pkl.gz"):
         return decompress_pickle(rundir + "/_df.pkl.gz")
@@ -735,3 +735,28 @@ def date_tag():
     from datetime import datetime
     date_tag = datetime.now().strftime("%Y%m%d")
     return date_tag
+
+from collections import OrderedDict
+
+def update_key(key, **updates):
+    d = OrderedDict(key)
+    d.update(updates)
+    return tuple(d.items())
+
+def is_file_a_more_recent_than_file_b(file_a_path, file_b_path):
+    import os
+    import datetime
+    try:
+        # Get the last modification time of file A
+        file_a_mod_time = os.path.getmtime(file_a_path)
+    except FileNotFoundError:
+        raise FileNotFoundError(f"The file at {file_a_path} does not exist.")
+    
+    try:
+        # Get the last modification time of file B
+        file_b_mod_time = os.path.getmtime(file_b_path)
+    except FileNotFoundError:
+        raise FileNotFoundError(f"The file at {file_b_path} does not exist.")
+    
+    # Compare modification times
+    return file_a_mod_time > file_b_mod_time
