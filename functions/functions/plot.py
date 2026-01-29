@@ -486,9 +486,18 @@ def save_fig(fig, name, sources, notes="", footersize=4, notebook_name=""):
     fig.savefig(out / f"{name}.png", dpi=300, bbox_inches="tight")
     fig.savefig(out / f"{name}.svg")
 
+    def yaml_safe(obj):
+        if isinstance(obj, dict):
+            return {k: yaml_safe(v) for k, v in obj.items()}
+        elif isinstance(obj, (list, tuple)):
+            return [yaml_safe(v) for v in obj]
+        else:
+            return obj
+
+
     # Save metadata
     meta = {
-        "sources": sources,
+        "sources": yaml_safe(sources),
         "path": full_path,
         "created": timestamp,
         "notes": notes
