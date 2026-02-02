@@ -172,9 +172,12 @@ def build_rundir_dict(rundirs, params, prm_sets, runtag):
 
 
 def load_runs(fname="*starting_lammps.txt", 
-                wdir=".",
-):
+                wdir=".", exclude=[]
+    ):
     pkl = find(fname, wdir)
+    if len(exlude)>0:
+        for exc in exclude:
+            pkl = [f for f in pkl if exc not in f]
     params, prm_sets = parameters_and_paramsets(pkl)
     rundirs = find_runfiles_dirs(wdir)
     D = build_rundir_dict(rundirs, params, prm_sets, runtag)
