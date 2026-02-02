@@ -135,11 +135,26 @@ def generate_configuration(Lx, n_synthases, run_dir, add_grid=True, initial_synt
                            Lz_ini_high=0,
                            check_distance=True,
                            n_bondtypes=1,
+                           massdict=None
                           ):
     """Generate the configuration file and save it to the given directory."""
     import math
     MIN_COORD = -Lx
     MAX_COORD = Lx
+
+    if massdict is None:
+        massdict = {
+            1: mZ,
+            2: mZ,
+            3: mZ,
+            4: 1,
+            5: m_process,
+            6: m_t6,
+            7: 1,
+            8: 1,
+            9: m_process,
+            10: m_diffu
+        }
     
     # Generate triangular grid
     triangular_grid = generate_triangular_grid(MIN_COORD, MAX_COORD, sidelength)
@@ -213,16 +228,16 @@ def generate_configuration(Lx, n_synthases, run_dir, add_grid=True, initial_synt
 
 Masses
 
-1 {mZ}
-2 {mZ}
-3 {mZ}
-4 1
-5 {m_process}
-6 {m_t6}
-7 1
-8 1
-9 {m_process}
-10 {m_diffu}
+1 {massdict[1]}
+2 {massdict[2]}
+3 {massdict[3]}
+4 {massdict[4]}
+5 {massdict[5]}
+6 {massdict[6]}
+7 {massdict[7]}
+8 {massdict[8]}
+9 {massdict[9]}
+10 {massdict[10]}
 
 Atoms
 
