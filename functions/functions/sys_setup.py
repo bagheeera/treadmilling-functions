@@ -142,6 +142,8 @@ def generate_configuration(Lx, n_synthases, run_dir, add_grid=True, initial_synt
     MIN_COORD = -Lx
     MAX_COORD = Lx
 
+    DEFAULT_MASSDICT = {i: 1 for i in range(1, 11)}
+
     if massdict is None:
         massdict = {
             1: mZ,
@@ -155,6 +157,10 @@ def generate_configuration(Lx, n_synthases, run_dir, add_grid=True, initial_synt
             9: m_process,
             10: m_diffu
         }
+    else:
+        # fill missing keys with 1
+        massdict = {**DEFAULT_MASSDICT, **massdict}
+
     
     # Generate triangular grid
     triangular_grid = generate_triangular_grid(MIN_COORD, MAX_COORD, sidelength)

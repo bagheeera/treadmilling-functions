@@ -153,10 +153,10 @@ def build_rundir_dict(rundirs, params, prm_sets, runtag):
         dict: Mapping from tuple(sorted(param.items())) to {"rundir": path}.
 
     Run:
-    pkl = find("*starting_lammps.txt", "./")
-    params, prm_sets = parameters_and_paramsets(pkl)
-    rundirs = find_runfiles_dirs("./")
-    D = build_rundir_dict(rundirs, params, prm_sets, runtag)
+    pkl = fct.utils.find("*starting_lammps.txt", "./")
+    params, prm_sets = fct.utils.parameters_and_paramsets(pkl)
+    rundirs = fct.utils.find_runfiles_dirs("./")
+    D = build_rundir_dict(rundirs, params, prm_sets, fct.utils.runtag)
     """
     D = {}
     for prm in params:
@@ -175,7 +175,7 @@ def load_runs(fname="*starting_lammps.txt",
                 wdir=".", exclude=[]
     ):
     pkl = find(fname, wdir)
-    if len(exlude)>0:
+    if len(exclude)>0:
         for exc in exclude:
             pkl = [f for f in pkl if exc not in f]
     params, prm_sets = parameters_and_paramsets(pkl)

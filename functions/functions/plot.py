@@ -104,7 +104,7 @@ def plot_data_(prm_sets, D, grid_params, overlay_params, plot_function, check_ke
                                figsize=figsize)
         
         fig.subplots_adjust(wspace=.4)
-        fig.suptitle(fig_title)
+        fig.suptitle(fig_title, y=0.999)
 
         for i, grid1 in enumerate(prm_sets[grid_params[0]]):
             for j, grid2 in enumerate(prm_sets[grid_params[1]]):
@@ -500,7 +500,8 @@ def save_fig(fig, name, sources, notes="", footersize=4, notebook_name=""):
         "sources": yaml_safe(sources),
         "path": full_path,
         "created": timestamp,
-        "notes": notes
+        "notes": notes,
+        "notebook_used_for_figure_creation": notebook_name
     }
 
     with open(out / "meta.yaml", "w") as f:

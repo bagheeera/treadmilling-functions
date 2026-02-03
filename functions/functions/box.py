@@ -311,3 +311,48 @@ y_density=4, cut=300):
     )
     #ax.colorbar(q, ax=ax, label="cosθ")
     return ax
+
+def plot_fract_in_box(
+    ax, key, D, Nsynth, seeds, overlay,
+    pad_with_nan=False,
+    factor=1,
+    overlayonly=False,
+):
+    from functions.utils import update_key
+    all_fract = []
+
+    for seed in seeds:
+        key_seed = update_key(key, **{"seed": seed})
+        if "nr_within_40" in D[key_seed]:
+            fract_inside = D[key_seed]["nr_within_40"] / Nsynth
+            all_fract.append(np.asarray(fract_inside))
+
+    counter = len(all_fract)
+    if counter == 0:
+        return
+
+    if pad_with_nan:
+        # --- NaN padding mode ---
+        max_len = max(len(f) for f in all_fract)
+        data = np.full((counter, max_len), np.nan)
+
+        for i, f in enumerate(all_fract):
+            data[i, :len(f)] = f
+
+        mean_fract = np.nanmean(data, axis=0)
+        std_fract  = np.nanstd(data, axis=0)
+        x = np.arange(max_len)
+
+    else:
+        # --- truncate to common length ---
+        min_len = min(len(f) for f in all_fract)
+        data = np.stack([f[:min_len] for f in all_fract])
+
+        mean_fract = data.mean(axis=0)
+        std_fract  = data.std(axis=0)
+        x = np.arange(min_len)
+
+    ax.plot(x, factor*mean_fract, label=overlay if overlayonly else f"{overlay} ({counter} seeds)")
+    # ax.fill_between(x, mean_fract - std_fract, mean_fract + std_fract, alpha=0.3)
+    ax.legend()
+

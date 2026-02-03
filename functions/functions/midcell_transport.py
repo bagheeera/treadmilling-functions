@@ -885,3 +885,19 @@ def plot_demograph_for_key(
 
     return fig
     #plt.show()
+
+
+
+import matplotlib.image as mpimg
+def plot_sept(D, key, ax, pngscale=3):
+    #print(D[key]["rundir"])
+    f = D[key]["rundir"] + f"/septumcross_{pngscale}.png"
+    if os.path.exists(f):
+        img = mpimg.imread(f)
+        #print(img.shape)
+        #img = img[800:-300,1400:-1400,:]
+        img = img[300:-100,500:-500,:]
+        ax.imshow(img)
+        #plt.axis('off')  # hide axes
+    else:
+        print(key,  "not found")
