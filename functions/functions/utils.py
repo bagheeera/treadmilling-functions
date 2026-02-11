@@ -389,22 +389,40 @@ srun papermill {analysis} {analysis_filename} -p runfold $dir -p rundir $dir -p 
         subprocess.run(["sbatch", f"--array=1-{line_count}", "slurm_array.submit"])
 
 
+import json
+
+def make_export_lines(extra_args):
+    if not extra_args:
+        return ""
+    return "\n".join(
+        f'export {k}={json.dumps(v)}'
+        for k, v in extra_args.items()
+    )
+
 
 import os
 import subprocess
 
-def submit_runs(rdir, job_name, analysisonly=False, cores=2, time="30:00:00", mem="30G", 
-                #  lmp_path="~/0__treadmilling/0__treadmilling_git/MD/lammpsSep21/src/lmp_serial",
-                lmp_path="/nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/lammps_molid/lammps/build/lmp",
-                 analysis_script="/nfs/scistore26/saricgrp/fhorvath/0__treadmilling/2__synthase_setup/2__vary_potential_size/filament_analysis.ipynb",
-                 env_setup="/nfs/scistore26/saricgrp/fhorvath/miniforge3/etc/profile.d",
-                 dontsubmit=False, additional_analysis=None, analyzefilaments=True):
+def submit_runs(
+    rdir,
+    job_name,
+    analysisonly=False,
+    cores=2,
+    time="30:00:00",
+    mem="30G",
+    lmp_path="/nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/lammps_molid/lammps/build/lmp",
+    analysis_script="/nfs/scistore26/saricgrp/fhorvath/0__treadmilling/2__synthase_setup/2__vary_potential_size/filament_analysis.ipynb",
+    env_setup="/nfs/scistore26/saricgrp/fhorvath/miniforge3/etc/profile.d",
+    dontsubmit=False,
+    additional_analysis=None,
+    analyzefilaments=True,
+):
     """
-    Creates and submits a SLURM array job script for running simulations and/or analysis on a list of directories.
+    Creates and submits a SLURM array job script for running simulations and/or analysis.
     """
 
     os.makedirs("logs", exist_ok=True)
-    
+
     script_content = f"""#!/bin/bash
 #SBATCH --job-name={job_name}
 #SBATCH --output=logs/array_job_%A_task_%a.log
@@ -433,8 +451,7 @@ touch starting_lammps.txt
 srun {lmp_path} -i config.sh
 """
 
-    # Always include the ERROR check before any analysis
-    script_content += f"""
+    script_content += """
 # Check for ERROR in log.txt before running analysis
 if grep -q "ERROR" log.txt; then
     echo "Skipping analysis due to ERROR in log.txt"
@@ -442,6 +459,7 @@ if grep -q "ERROR" log.txt; then
 fi
 """
 
+    # ---- default filament analysis ----
     if analyzefilaments:
         script_content += f"""
 # Filament analysis
@@ -449,19 +467,49 @@ source {env_setup}/conda.sh
 source {env_setup}/mamba.sh
 eval "$(mamba shell hook --shell bash)"
 mamba activate filaments
-srun papermill {analysis_script} analyze_slrm.ipynb -p runfold $dir -p num_cores {cores}
+srun papermill {analysis_script} analyze_slrm.ipynb \
+    -p runfold $dir \
+    -p rundir $dir \
+    -p num_cores {cores}
 """
 
+    # ---- generalized additional analysis ----
     if additional_analysis:
         for analysis in additional_analysis:
-            analysis_filename = os.path.basename(analysis)
+
+            # Backwards compatibility
+            if isinstance(analysis, str):
+                path = analysis
+                env = "filaments"
+                extra_args = {}
+            else:
+                path = analysis["path"]
+                env = analysis.get("env", "filaments")
+                extra_args = analysis.get("extra_args", {})
+
+            fname = os.path.basename(path)
+            export_lines = make_export_lines(extra_args)
+
+            if path.endswith(".ipynb"):
+                cmd = (
+                    f"srun papermill {path} {fname} "
+                    f"-p runfold $dir "
+                    f"-p rundir $dir "
+                    f"-p num_cores {cores}"
+                )
+            elif path.endswith(".py"):
+                cmd = f"srun python {path}"
+            else:
+                raise ValueError(f"Unsupported analysis type: {path}")
+
             script_content += f"""
-# Additional analysis: {analysis_filename}
+# Additional analysis: {fname}
 source {env_setup}/conda.sh
 source {env_setup}/mamba.sh
 eval "$(mamba shell hook --shell bash)"
-mamba activate filaments
-srun papermill {analysis} {analysis_filename} -p runfold $dir -p rundir $dir -p num_cores {cores}
+mamba activate {env}
+{export_lines}
+{cmd}
 """
 
     with open("slurm_array.submit", "w") as file:
