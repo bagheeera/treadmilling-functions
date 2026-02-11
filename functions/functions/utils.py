@@ -477,15 +477,20 @@ srun papermill {analysis_script} analyze_slrm.ipynb \
     if additional_analysis:
         for analysis in additional_analysis:
 
-            # Backwards compatibility
             if isinstance(analysis, str):
-                path = analysis
+                # Backward compatibility:
+                # allow "script.ipynb -p foo bar"
+                parts = analysis.split()
+                path = parts[0]
+                extra_cli = " ".join(parts[1:])
                 env = "filaments"
                 extra_args = {}
             else:
                 path = analysis["path"]
+                extra_cli = ""
                 env = analysis.get("env", "filaments")
                 extra_args = analysis.get("extra_args", {})
+
 
             fname = os.path.basename(path)
             export_lines = make_export_lines(extra_args)
@@ -495,10 +500,11 @@ srun papermill {analysis_script} analyze_slrm.ipynb \
                     f"srun papermill {path} {fname} "
                     f"-p runfold $dir "
                     f"-p rundir $dir "
-                    f"-p num_cores {cores}"
+                    f"-p num_cores {cores} "
+                    f"{extra_cli}"
                 )
             elif path.endswith(".py"):
-                cmd = f"srun python {path}"
+                cmd = f"srun python {path} {extra_cli}"
             else:
                 raise ValueError(f"Unsupported analysis type: {path}")
 
