@@ -142,7 +142,7 @@ def generate_configuration(Lx, n_synthases, run_dir, add_grid=True, initial_synt
     MIN_COORD = -Lx
     MAX_COORD = Lx
 
-    DEFAULT_MASSDICT = {i: 1 for i in range(1, 11)}
+    DEFAULT_MASSDICT = {i: 1 for i in range(1, 15)}
 
     if massdict is None:
         massdict = {
@@ -159,7 +159,9 @@ def generate_configuration(Lx, n_synthases, run_dir, add_grid=True, initial_synt
         }
     else:
         # fill missing keys with 1
+        # print("filling in mass ditionary with", len(DEFAULT_MASSDICT), "entries")
         massdict = {**DEFAULT_MASSDICT, **massdict}
+        # print(massdict)
 
     
     # Generate triangular grid
@@ -210,7 +212,7 @@ def generate_configuration(Lx, n_synthases, run_dir, add_grid=True, initial_synt
     #    n_atomtypes = n_atomtypes_
     #else:
     #    n_atomtypes = int(max(np.array(atom_table)[:, 2]))
-    n_atomtypes = 10
+    n_atomtypes = len(DEFAULT_MASSDICT)
     Lhalved = Lx
     if yboxsize:
         yLhalved = yboxsize
@@ -219,6 +221,10 @@ def generate_configuration(Lx, n_synthases, run_dir, add_grid=True, initial_synt
     
     # Create configuration text
     gridstring = "\n".join(" ".join(map(str, entry)) for entry in atom_table)
+    
+    masses_block = "\n".join(
+        f"{k} {v}" for k, v in massdict.items()
+    )
     
     config_content = f"""
 ´Divisome´ setup with grid of reaction ghosts
@@ -234,16 +240,7 @@ def generate_configuration(Lx, n_synthases, run_dir, add_grid=True, initial_synt
 
 Masses
 
-1 {massdict[1]}
-2 {massdict[2]}
-3 {massdict[3]}
-4 {massdict[4]}
-5 {massdict[5]}
-6 {massdict[6]}
-7 {massdict[7]}
-8 {massdict[8]}
-9 {massdict[9]}
-10 {massdict[10]}
+{masses_block}
 
 Atoms
 

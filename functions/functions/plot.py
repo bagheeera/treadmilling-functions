@@ -346,6 +346,7 @@ def set_cmap_colorcycle(cmap_name="viridis", N=10, portion=(0.0, 1.0)):
     cmap = cm.get_cmap(cmap_name, N)
     colors = cmap(np.linspace(start, end, N))
     mpl.rcParams['axes.prop_cycle'] = cycler(color=colors)
+    return cycler(color=colors)
 
 
 
