@@ -399,6 +399,14 @@ def make_export_lines(extra_args):
         for k, v in extra_args.items()
     )
 
+def make_papermill_args(params):
+    if not params:
+        return ""
+    return " ".join(
+        f"-p {k} {json.dumps(v)}"
+        for k, v in params.items()
+    )
+
 
 import os
 import subprocess
@@ -418,7 +426,79 @@ def submit_runs(
     analyzefilaments=True,
 ):
     """
-    Creates and submits a SLURM array job script for running simulations and/or analysis.
+    Create and submit a SLURM array job for running LAMMPS simulations and/or
+    post-processing analyses across multiple run directories.
+
+    Each SLURM array task operates in a single run directory read from `rdir`.
+    The job can optionally run a simulation step, followed by one or more
+    analysis steps executed via Papermill (for notebooks) or Python.
+
+    Parameters
+    ----------
+    rdir : str
+        Path to a text file containing one run directory per line. Each line
+        corresponds to one SLURM array task.
+
+    job_name : str
+        Name of the SLURM job.
+
+    analysisonly : bool, default False
+        If True, skip the LAMMPS simulation step and only run analysis.
+
+    cores : int, default 2
+        Number of CPU cores per SLURM task.
+
+    time : str, default "30:00:00"
+        Walltime limit for each SLURM task.
+
+    mem : str, default "30G"
+        Memory allocation per task.
+
+    lmp_path : str
+        Path to the LAMMPS executable.
+
+    analysis_script : str
+        Path to the default filament analysis Jupyter notebook.
+
+    env_setup : str
+        Path to the conda/mamba environment initialization scripts.
+
+    dontsubmit : bool, default False
+        If True, write the SLURM submission script but do not submit it.
+
+    additional_analysis : list, optional
+        Additional analysis steps to run after the default analysis.
+        Each entry may be either:
+
+        - A string (backward compatible), interpreted as a command fragment,
+          e.g. "analysis.ipynb -p foo 1" or "script.py --flag".
+
+        - A dict with the following optional keys:
+            * path (str): Path to a .ipynb or .py file (required).
+            * env (str): Conda environment to activate (default: "filaments").
+            * papermill_params (dict): Parameters passed via papermill `-p`
+              (notebooks only).
+            * extra_args (dict): Environment variables exported before execution.
+            * cli_args (str): Raw command-line arguments appended verbatim.
+
+    analyzefilaments : bool, default True
+        If True, run the default filament analysis notebook before any
+        additional analysis steps.
+
+    Notes
+    -----
+    - Analysis type is inferred from file extension:
+        * `.ipynb` → executed with `papermill`
+        * `.py` → executed with `python`
+    - The parameters `runfold` and `rundir` are always passed to notebooks.
+    - Environment variables in `extra_args` are JSON-encoded and must be
+      decoded inside Python using `json.loads(os.getenv(...))`.
+    - Each analysis step is skipped if an ERROR is detected in `log.txt`.
+
+    Returns
+    -------
+    None
+        Writes a SLURM submission script and optionally submits it.
     """
 
     os.makedirs("logs", exist_ok=True)
@@ -485,15 +565,19 @@ srun papermill {analysis_script} analyze_slrm.ipynb \
                 extra_cli = " ".join(parts[1:])
                 env = "filaments"
                 extra_args = {}
+                papermill_params = {}
             else:
                 path = analysis["path"]
-                extra_cli = ""
+                extra_cli = analysis.get("cli_args", "")
                 env = analysis.get("env", "filaments")
                 extra_args = analysis.get("extra_args", {})
+                papermill_params = analysis.get("papermill_params", {})
 
 
             fname = os.path.basename(path)
             export_lines = make_export_lines(extra_args)
+
+            pm_args = make_papermill_args(papermill_params)
 
             if path.endswith(".ipynb"):
                 cmd = (
@@ -501,6 +585,7 @@ srun papermill {analysis_script} analyze_slrm.ipynb \
                     f"-p runfold $dir "
                     f"-p rundir $dir "
                     f"-p num_cores {cores} "
+                    f"{pm_args} "
                     f"{extra_cli}"
                 )
             elif path.endswith(".py"):
