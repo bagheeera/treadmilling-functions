@@ -170,15 +170,62 @@ def build_rundir_dict(rundirs, params, prm_sets, runtag):
                 break
     return D
 
+def restrict_prm_sets(prm_sets, select):
+    if not select:
+        return prm_sets
+
+    prm_sets = prm_sets.copy()
+
+    for key, val in select.items():
+        if key not in prm_sets:
+            raise KeyError(f"Unknown parameter in select: {key}")
+
+        allowed = prm_sets[key]
+
+        if isinstance(val, (list, tuple, set)):
+            prm_sets[key] = [v for v in allowed if v in val]
+        else:
+            prm_sets[key] = [val] if val in allowed else []
+
+        if not prm_sets[key]:
+            raise ValueError(
+                f"No valid values left for parameter '{key}' after selection"
+            )
+
+    return prm_sets
+
+def filter_params(params, select):
+    if not select:
+        return params
+
+    def match(prm):
+        for k, v in select.items():
+            if k not in prm:
+                return False
+            if isinstance(v, (list, tuple, set)):
+                if prm[k] not in v:
+                    return False
+            else:
+                if prm[k] != v:
+                    return False
+        return True
+
+    return [prm for prm in params if match(prm)]
+
 
 def load_runs(fname="*starting_lammps.txt", 
-                wdir=".", exclude=[]
+                wdir=".", exclude=[],
+                select=None
     ):
     pkl = [
         f for f in find(fname, wdir)
         if not any(exc in f for exc in exclude)
     ]
     params, prm_sets = parameters_and_paramsets(pkl)
+
+    prm_sets = restrict_prm_sets(prm_sets, select)
+    params = filter_params(params, select)
+
     rundirs = [
         d for d in find_runfiles_dirs(wdir)
         if not any(exc in d for exc in exclude)
@@ -415,7 +462,7 @@ def submit_runs(
     rdir,
     job_name,
     analysisonly=False,
-    cores=2,
+    cores=1,
     time="30:00:00",
     mem="30G",
     lmp_path="/nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/lammps_molid/lammps/build/lmp",
