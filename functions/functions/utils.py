@@ -10,7 +10,7 @@ import sys
 
 import os
 
-def check_dirs_with_file_without_file(required_files=None, missing_files=None, dir_name="runfiles"):
+def check_dirs_with_file_without_file(required_files=None, missing_files=None, dir_name="runfiles", write_to=None):
     """
     Return a list of directories (searched recursively from cwd) whose name is `dir_name`,
     that contain ALL files in `required_files`, and contain NONE of the files in `missing_files`.
@@ -51,6 +51,11 @@ def check_dirs_with_file_without_file(required_files=None, missing_files=None, d
 
         if has_all_required and not has_any_missing:
             matches.append(root)
+
+    if write_to:
+        with open(write_to, "w") as f:
+            for match in matches:
+                f.write(match + "\n")
 
     return matches
 

@@ -6,7 +6,9 @@ import numpy as np
 
 def plot_data_(prm_sets, D, grid_params, overlay_params, plot_function, check_key, 
               fixed_params=None, axis_edits=None, figsize_=None, 
-              sharex=True, sharey=True, renamedict=None):
+              sharex=True, sharey=True, renamedict=None,
+              return_fig=False,
+              print_keys=False):
     """
     Generates a grid of subplots for each combination of parameters in `figure_params`,
     using `grid_params` to define the subplot layout and optionally overlaying data
@@ -126,6 +128,8 @@ def plot_data_(prm_sets, D, grid_params, overlay_params, plot_function, check_ke
                     key_tuple = tuple(sorted(key_dict.items()))
 
                     if key_tuple in D and check_key in D[key_tuple]:
+                        if print_keys:
+                            print(key_tuple)
                         plot_function(key_tuple, subplot_ax, overlay)
                 if renamedict:
                     column_label = renamedict.get(grid_params[0], grid_params[0])
@@ -165,9 +169,17 @@ def plot_data_(prm_sets, D, grid_params, overlay_params, plot_function, check_ke
                         elif prop in ['set_ylim', 'set_xlim', 'set_xticks', 'set_yticks']:
                             getattr(subplot_ax, prop)(*value)
 
-        plt.legend()
+        
+        ax = plt.gca()
+        handles, labels = ax.get_legend_handles_labels()
+        if labels:
+            ax.legend()
+
         fig.tight_layout()
-        plt.show()
+        if return_fig:
+            return fig
+        else:
+            plt.show()
 
 
 

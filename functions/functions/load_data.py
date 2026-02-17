@@ -23,6 +23,7 @@ import os
 import pickle
 import gzip
 from tqdm.notebook import tqdm
+import numpy as np
 
 def load_pickles_into_D(D, pkl_files, #usedill=False
 ):
@@ -55,6 +56,8 @@ def load_pickles_into_D(D, pkl_files, #usedill=False
         elif ".feather" in fname:
             import pyarrow.feather as feather
             return feather.read_feather
+        elif ".npy" in fname:
+            return np.load
         else:
             raise ImportError("filetype not recognized")
     

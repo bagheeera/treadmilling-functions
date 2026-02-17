@@ -4,9 +4,11 @@ from matplotlib.lines import Line2D
 import pandas as pd
 import pyarrow.feather as feather
 
-def synth_scatter(ax, key, D, boxcolor="r", cmap="viridis",
+def synth_scatter(ax, key, D, boxcolor="r", cmap="PuRd",
     use_finalframe=True,
-    use_df_rot=False):
+    use_df_rot=False,
+    bins=50
+    ):
     if use_finalframe:
         df = D[key]["finalframe"]
         df = df[df["type"]==5]
@@ -25,7 +27,7 @@ def synth_scatter(ax, key, D, boxcolor="r", cmap="viridis",
     #s=1)
     # times 5
     df.loc[:, ["x", "y"]] = df.loc[:, ["x", "y"]] * 5
-    ax.hist2d(*df[["x", "y"]].values.T, bins=50,
+    ax.hist2d(*df[["x", "y"]].values.T, bins=bins,
     cmap=cmap)
     # synth_scatter(ax, key)
     ax.set_aspect("equal")
@@ -255,17 +257,20 @@ def plot_rotation_angle(D, key, ax, overlay=None,
 
 
 def orientation_plot(ax, x_minmax, y_minmax, d_x_mean, d_y_mean, x_edges, y_edges,
-y_density=4, cut=300):
+                    quiver_density=4, cut=300,
+                    cmap='bwr',
+                    usecmap=True):
 
     x_centers = (x_edges[:-1] + x_edges[1:]) / 2
     y_centers = (y_edges[:-1] + y_edges[1:]) / 2
 
-    y_quiver_centers = y_centers[::y_density]
+    y_quiver_centers = y_centers[::quiver_density]
+    x_quiver_centers = x_centers[::quiver_density]
 
-    d_y_mean_quiver = d_y_mean.T[::y_density, :]
-    d_x_mean_quiver = d_x_mean.T[::y_density, :]
+    d_y_mean_quiver = d_y_mean.T[::quiver_density, ::quiver_density]
+    d_x_mean_quiver = d_x_mean.T[::quiver_density, ::quiver_density]
 
-    X, Y = np.meshgrid(x_centers, y_quiver_centers)
+    X, Y = np.meshgrid(x_quiver_centers, y_quiver_centers)
 
     U = d_x_mean_quiver * 1000
     V = d_y_mean_quiver * 1000
@@ -300,15 +305,22 @@ y_density=4, cut=300):
 
 
 
-    q = ax.quiver(
-        X, Y, U, V,
-        C,
-        cmap='bwr',
-        #vmin=-1, vmax=1,
-        pivot='mid',
-        scale_units='xy',
-        scale=5 #.01
+    quiver_kwargs = dict(
+        pivot="mid",
+        scale_units="xy",
+        scale=5,
     )
+
+    if not usecmap:
+        quiver_kwargs.update(dict(color="k"))
+
+    q = ax.quiver(X, Y, U, V, **quiver_kwargs)
+
+    if usecmap:
+        q.set_array(C)
+        q.set_cmap(cmap)
+        q.set_clim(-1, 1)
+
     #ax.colorbar(q, ax=ax, label="cosθ")
     return ax
 

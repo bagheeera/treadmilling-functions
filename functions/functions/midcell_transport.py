@@ -400,7 +400,7 @@ def filter_by_time(xy, d_xy, time, T_range):
 def bin_dxy(xy, d_xy, N_bins=25, yrange=35):
 
     
-    x_minmax = np.min(xy[:,0]), np.max(xy[:,0])
+    x_minmax = -yrange, yrange # np.min(xy[:,0]), np.max(xy[:,0])
     y_minmax = -yrange, yrange #np.min(xy[:,1]), np.max(xy[:,1]),
     x_minmax, y_minmax
     
@@ -484,7 +484,8 @@ def disp_plot(ax,
     #plt.show()
 
 def orientation_plot(ax, x_minmax, y_minmax, d_x_mean, d_y_mean, x_edges, y_edges,
-    y_density=4, cut=300):
+    y_density=4, cut=300,
+    quiverscale=5):
     ## plot orientation of displacement vectors
     ## color by cosine of angle with inward normal
 
@@ -498,11 +499,11 @@ def orientation_plot(ax, x_minmax, y_minmax, d_x_mean, d_y_mean, x_edges, y_edge
 
     X, Y = np.meshgrid(x_centers, y_quiver_centers)
 
-    U = d_x_mean_quiver * 1000
-    V = d_y_mean_quiver * 1000
+    U = d_x_mean_quiver #* 1000
+    V = d_y_mean_quiver #* 1000
 
-    U = np.clip(U, -cut, cut)
-    V = np.clip(V, -cut, cut)
+    # U = np.clip(U, -cut, cut)
+    # V = np.clip(V, -cut, cut)
 
 
     ## mark center
@@ -538,7 +539,7 @@ def orientation_plot(ax, x_minmax, y_minmax, d_x_mean, d_y_mean, x_edges, y_edge
         #vmin=-1, vmax=1,
         pivot='mid',
         scale_units='xy',
-        scale=5 #.01
+        scale=quiverscale #.01
     )
     #ax.colorbar(q, ax=ax, label="cosθ")
     return ax
@@ -901,3 +902,16 @@ def plot_sept(D, key, ax, pngscale=3):
         #plt.axis('off')  # hide axes
     else:
         print(key,  "not found")
+
+
+import matplotlib.image as mpimg
+def display_png(fname, ax,
+crop=(300, -100, 500, -500)):
+    #print(D[key]["rundir"])
+    if os.path.exists(fname):
+        img = mpimg.imread(fname)
+        img = img[crop[0]:crop[1],crop[2]:crop[3],:]
+        ax.imshow(img)
+        ax.axis('off')  # hide axes
+    else:
+        print("missing", fname)
