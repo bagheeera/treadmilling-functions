@@ -4,9 +4,13 @@ import numpy as np
 import functions as fct
 
 # ── Constants ────────────────────────────────────────────────────────────────
-Y_CONSIDER = 10   # drop all traces outside ±Y_CONSIDER
-N_BINS_Y   = 20   # number of bins along the long cell axis
-
+#Y_CONSIDER = 10   # drop all traces outside ±Y_CONSIDER
+#N_BINS_Y   = 20   # number of bins along the long cell axis
+strand_thickness_width = 4.5 # nm
+septal_thickness = 40 # nm # wenzel pnas 2020
+y_edges = np.arange(-septal_thickness - strand_thickness_width,
+        septal_thickness + strand_thickness_width,
+        strand_thickness_width) / 5 # to simulation units
 
 # ── Circle fitting ────────────────────────────────────────────────────────────
 def fit_circle(coords):
@@ -47,8 +51,10 @@ def deform_cmd(Lx_half):
 # ── Inward deformation ────────────────────────────────────────────────────────
 def calc_inward_deformations(df, fulldf, timesteps=100,
                              N=200,             # number of bins around the circumference
-                             yconsider=Y_CONSIDER,
-                             Nbins_y=N_BINS_Y):
+                             y_edges=y_edges,
+                             #yconsider=Y_CONSIDER,
+                             #Nbins_y=N_BINS_Y
+                             ):
     """
     Compute inward deformations using histogram data.
     The full 2D histogram (N, Nbins_y) is preserved per frame so that
@@ -75,20 +81,20 @@ def calc_inward_deformations(df, fulldf, timesteps=100,
     """
     t_steps = np.linspace(df["time"].min(), df["time"].max(), timesteps)
     delta_t = np.diff(t_steps)[0]
-    y_edges = np.linspace(-yconsider, yconsider, Nbins_y + 1)
+    # y_edges = np.linspace(-yconsider, yconsider, Nbins_y + 1)
     inward_deformations = []
-
+    print("---"*5, "calculating deformations for times", t_steps, "---"*5,)
     for t in tqdm(t_steps, leave=False):
         dft_full = fulldf[(fulldf["time"] >= t - delta_t) & (fulldf["time"] < t)]
         if len(dft_full) == 0:
-            inward_deformations.append(np.zeros((N, Nbins_y)))
+            inward_deformations.append(np.zeros((N, len(y_edges))))
             continue
 
         xbins = np.linspace(dft_full["x"].min(), dft_full["x"].max(), N + 1)
 
         df_t = df[(df["time"] >= t - delta_t) & (df["time"] < t)]
         if len(df_t) == 0:
-            inward_deformations.append(np.zeros((N, Nbins_y)))
+            inward_deformations.append(np.zeros((N, len(y_edges))))
             continue
 
         H, _, _ = np.histogram2d(df_t["x"], df_t["y"], bins=[xbins, y_edges])
@@ -172,8 +178,10 @@ class CoverageTracker:
         """Return boolean mask of bins exceeding threshold, then decay those bins.
         _cumulative has shape (N, Nbins_y).
         Collapse y by mean → coverage_mask shape (N,)."""
-        coverage_mask = self._cumulative.mean(axis=1)  # (N,)
-        deform = coverage_mask > threshold
+        coverage_mask = self._cumulative.sum(axis=1)  # (N,)
+        print("coverage averaged along y", coverage_mask)
+        deform = coverage_mask > len(y_edges) * threshold
+        print("---"*5, "deforming", sum(deform), "bins", "---"*5,)
         self._cumulative[deform] -= 1
         self._cumulative = np.maximum(0, self._cumulative)
         return deform, coverage_mask
@@ -184,7 +192,8 @@ class CoverageTracker:
 
 # ── Main update step ──────────────────────────────────────────────────────────
 def calc_updated_circ(lmp, tracker, threshold, df, fulldf,
-                      yconsider=Y_CONSIDER, N_angular_bins=200):
+                      #yconsider=Y_CONSIDER, 
+                      N_angular_bins=200):
     """
     One update step: compute deformations, update coverage, fit new circle.
 
