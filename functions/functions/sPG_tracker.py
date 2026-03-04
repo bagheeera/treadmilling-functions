@@ -6,24 +6,58 @@ import functions as fct
 # ── Physical constants & y-binning ───────────────────────────────────────────
 # The z-ring is modeled as having a finite septal thickness.
 # Each strand occupies one bin of width = strand_thickness_width.
-# y-bins therefore represent physical strand-slot positions along the long axis.
+# y-bins represent physical strand-slot positions along the long cell axis.
 #
 # Bin edges run from -(septal_thickness + strand_thickness_width)
 #                  to +(septal_thickness + strand_thickness_width)
-# in steps of strand_thickness_width, then converted to simulation units (/5).
+# in steps of strand_thickness_width, converted to simulation units.
 #
-# Number of y-bins = len(y_edges) - 1  ← use this, NOT len(y_edges)
+# y_edges and N_Y_BINS are module globals — always read at call time, never
+# passed as default arguments, so set_septal_bins() propagates everywhere.
 
-strand_thickness_width = 4.5          # nm — width of one strand
-septal_thickness       = 40           # nm — total ring thickness (Wenzel PNAS 2020)
+NM_PER_SIM_UNIT        = 5     # 1 simulation unit = 5 nm
+strand_thickness_width = 4.5   # nm — width of one strand; also radial step in calc_radii
+septal_thickness       = 40    # nm — total ring thickness (Wenzel PNAS 2020)
 
-y_edges = np.arange(
-    -septal_thickness - strand_thickness_width,
-     septal_thickness + strand_thickness_width,
-     strand_thickness_width
-) / 5  # convert nm → simulation units (1 sim unit = 5 nm)
+# Initialized below via set_septal_bins() — do not set manually
+y_edges  = None
+N_Y_BINS = None
 
-N_Y_BINS = len(y_edges) - 1  # number of actual y-bins (edges - 1); used for threshold
+
+def set_septal_bins(strand_width_nm=strand_thickness_width,
+                    septal_thickness_nm=septal_thickness):
+    """
+    (Re)compute y_edges and N_Y_BINS from physical parameters and update module globals.
+
+    Call this once at startup (done automatically on import), or any time you
+    want to change the strand/septal geometry. Because all functions read
+    y_edges and N_Y_BINS from module globals at call time, a single call here
+    propagates to calc_inward_deformations, CoverageTracker, and calc_radii
+    without needing to restart or pass anything manually.
+
+    Parameters
+    ----------
+    strand_width_nm : float
+        Width of one strand in nm. Sets both y-bin size and the radial
+        constriction step in calc_radii (via strand_thickness_width).
+    septal_thickness_nm : float
+        Total ring thickness in nm (default: 40 nm, Wenzel PNAS 2020).
+    """
+    global y_edges, N_Y_BINS, strand_thickness_width, septal_thickness
+    strand_thickness_width = strand_width_nm
+    septal_thickness       = septal_thickness_nm
+    y_edges = np.arange(
+        -septal_thickness_nm - strand_width_nm,
+         septal_thickness_nm + strand_width_nm,
+         strand_width_nm
+    ) / NM_PER_SIM_UNIT          # nm → simulation units
+    N_Y_BINS = len(y_edges) - 1  # number of bins = edges - 1
+    print(f"Septal bins set: {N_Y_BINS} y-bins, "
+          f"{y_edges[0]*NM_PER_SIM_UNIT:.1f} to {y_edges[-1]*NM_PER_SIM_UNIT:.1f} nm "
+          f"in steps of {strand_width_nm} nm ({strand_width_nm/NM_PER_SIM_UNIT} sim units)")
+
+# Initialize globals with defaults on import
+set_septal_bins()
 
 
 # ── Circle fitting ────────────────────────────────────────────────────────────
@@ -64,8 +98,7 @@ def deform_cmd(Lx_half):
 
 # ── Inward deformation histogram ─────────────────────────────────────────────
 def calc_inward_deformations(df, fulldf, timesteps=100,
-                             N=200,        # number of x-bins around the circumference
-                             y_edges=y_edges):
+                             N=200):  # number of x-bins around the circumference
     """
     Build a 2D particle-count histogram (x × y) for each time frame.
 
@@ -77,19 +110,19 @@ def calc_inward_deformations(df, fulldf, timesteps=100,
     x-bin edges are derived from fulldf (all particle types) each frame,
     so they track the simulation box extent rather than just typed particles.
 
+    Uses module globals y_edges and N_Y_BINS — call set_septal_bins() first
+    if you need non-default geometry.
+
     Parameters
     ----------
     df : pd.DataFrame
-        Strand particles only (e.g. types 5/9) — contribute to histogram counts.
+        Processive strand particles only (e.g. types 5/9) — histogram counts.
     fulldf : pd.DataFrame
         All particle types — used only to set x-bin edges per frame.
     timesteps : int
         Number of evenly-spaced time points to evaluate.
     N : int
         Number of x-bins (circumference direction).
-    y_edges : np.ndarray
-        Bin edges along y (long axis), in simulation units.
-        Number of y-bins = len(y_edges) - 1.
 
     Returns
     -------
@@ -100,7 +133,7 @@ def calc_inward_deformations(df, fulldf, timesteps=100,
     """
     t_steps = np.linspace(df["time"].min(), df["time"].max(), timesteps)
     delta_t = np.diff(t_steps)[0]
-    n_ybins = len(y_edges) - 1  # actual number of y-bins
+    n_ybins = len(y_edges) - 1  # read global at call time
     inward_deformations = []
 
     print("─" * 15, "calculating deformations for times", t_steps, "─" * 15)
@@ -115,13 +148,13 @@ def calc_inward_deformations(df, fulldf, timesteps=100,
         # N bins → N+1 edges, spanning full box x-extent this frame
         xbins = np.linspace(dft_full["x"].min(), dft_full["x"].max(), N + 1)
 
-        # Histogram only strand particles
+        # Bin processive particles only
         df_t = df[(df["time"] >= t - delta_t) & (df["time"] < t)]
         if len(df_t) == 0:
             inward_deformations.append(np.zeros((N, n_ybins)))
             continue
 
-        # H[i, j] = strand particle count in x-bin i, y-bin j
+        # H[i, j] = processive particle count in x-bin i, y-bin j
         #   axis 0 = x (circumference), length N
         #   axis 1 = y (long axis / strand slots), length n_ybins
         # y is NOT collapsed here — preserved so threshold logic can sum over it later
@@ -132,14 +165,16 @@ def calc_inward_deformations(df, fulldf, timesteps=100,
 
 
 # ── Radii computation ─────────────────────────────────────────────────────────
-def calc_radii(inward_deformations, N, timesteps, circumference,
-               strandwidth=4.5):  # nm
+def calc_radii(inward_deformations, N, timesteps, circumference):
     """
     Compute the evolving boundary coordinates as the ring constricts.
 
     Each frame, the local radius is reduced by:
-        delta_r[i] = strand_count_in_bin[i] * strandwidth
-    Radii accumulate inward over frames (never reset).
+        delta_r[i] = strand_count_in_bin[i] * strandwidth_su
+    Radii accumulate inward over frames (never reset between frames).
+
+    Uses module global strand_thickness_width (converted to simulation units
+    via NM_PER_SIM_UNIT) — call set_septal_bins() to change it.
 
     Parameters
     ----------
@@ -150,16 +185,17 @@ def calc_radii(inward_deformations, N, timesteps, circumference,
     timesteps : int
         Number of time frames.
     circumference : float
-        Current box circumference (simulation units) → sets initial radius.
-    strandwidth : float
-        Radial reduction per strand, in nm (default 4.5).
+        Current box circumference in simulation units → sets initial radius.
 
     Returns
     -------
     np.ndarray, shape (timesteps, N, 2)
-        (x, y) Cartesian boundary coordinates for each frame.
+        (x, y) Cartesian boundary coordinates for each frame, in simulation units.
     """
     # D0 = 1200  # nm — initial diameter, retained for reference, not currently used
+
+    # strand_thickness_width is in nm; convert to simulation units for consistency
+    strandwidth_su = strand_thickness_width / NM_PER_SIM_UNIT  # nm → sim units
 
     radius = circumference / (2 * np.pi)  # initial radius, uniform around ring
     angles = np.linspace(0, 2 * np.pi, N, endpoint=False)
@@ -167,12 +203,12 @@ def calc_radii(inward_deformations, N, timesteps, circumference,
 
     stored_coordinates = []
     for frame in range(timesteps):
-        # Reduce radius by strandwidth for each strand counted in this bin
-        delta_r = inward_deformations[frame] * strandwidth  # (N,)
-        radii   = np.maximum(0, radii - delta_r)            # clamp: radius >= 0
+        # Each strand reduces the local radius by one strandwidth (in sim units)
+        delta_r = inward_deformations[frame] * strandwidth_su  # (N,)
+        radii   = np.maximum(0, radii - delta_r)               # clamp: radius >= 0
         x = radii * np.cos(angles)
         y = radii * np.sin(angles)
-        stored_coordinates.append(np.column_stack((x, y)))  # (N, 2)
+        stored_coordinates.append(np.column_stack((x, y)))     # (N, 2)
 
     return np.array(stored_coordinates)  # (timesteps, N, 2)
 
@@ -196,8 +232,12 @@ class CoverageTracker:
     this "consumes" one complete coverage layer and advances the
     constriction counter to the next level.
 
+    Uses module global N_Y_BINS — call set_septal_bins() before instantiating
+    if you need non-default geometry.
+
     Usage
     -----
+        set_septal_bins()          # optional, if changing defaults
         tracker = CoverageTracker()
         for step in simulation_steps:
             result = calc_updated_circ(lmp, tracker, threshold=0.5, ...)
@@ -258,6 +298,7 @@ class CoverageTracker:
         coverage_mask = self._cumulative.sum(axis=1)
 
         # Trigger where total occupancy exceeds threshold fraction of all slots
+        # N_Y_BINS read from module global at call time
         deform = coverage_mask > threshold * N_Y_BINS
         print("─" * 15, f"deforming {deform.sum()} / {len(deform)} x-bins", "─" * 15)
         print("coverage per x-bin (summed over y-slots):", coverage_mask)
@@ -312,7 +353,8 @@ def calc_updated_circ(lmp, tracker, threshold, df, fulldf, N_angular_bins=200):
         Which x-bins triggered a constriction step this call.
     """
     # 1. Histograms: shape (timesteps, N, N_Y_BINS)
-    inwrd = calc_inward_deformations(df, fulldf, N=N_angular_bins, y_edges=y_edges)
+    #    y_edges read from module global
+    inwrd = calc_inward_deformations(df, fulldf, N=N_angular_bins)
 
     # 2. Sum over time frames → total counts this call: (N, N_Y_BINS)
     inwrd_dT = inwrd.sum(axis=0)
@@ -325,7 +367,7 @@ def calc_updated_circ(lmp, tracker, threshold, df, fulldf, N_angular_bins=200):
     box = lmp.extract_box()
     circumference = box[1][0] - box[0][0]
 
-    # 5. Collapse y-bins for radii: sum over strand slots → total strand count per x-bin
+    # 5. Collapse y-bins: sum over strand slots → total strand count per x-bin per frame
     #    (timesteps, N, N_Y_BINS) → (timesteps, N)
     inwrd_collapsed = inwrd.sum(axis=2)
     timesteps = inwrd.shape[0]
