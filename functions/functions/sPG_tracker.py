@@ -3,14 +3,28 @@ from tqdm import tqdm
 import numpy as np
 import functions as fct
 
-# ── Constants ────────────────────────────────────────────────────────────────
-#Y_CONSIDER = 10   # drop all traces outside ±Y_CONSIDER
-#N_BINS_Y   = 20   # number of bins along the long cell axis
-strand_thickness_width = 4.5 # nm
-septal_thickness = 40 # nm # wenzel pnas 2020
-y_edges = np.arange(-septal_thickness - strand_thickness_width,
-        septal_thickness + strand_thickness_width,
-        strand_thickness_width) / 5 # to simulation units
+# ── Physical constants & y-binning ───────────────────────────────────────────
+# The z-ring is modeled as having a finite septal thickness.
+# Each strand occupies one bin of width = strand_thickness_width.
+# y-bins therefore represent physical strand-slot positions along the long axis.
+#
+# Bin edges run from -(septal_thickness + strand_thickness_width)
+#                  to +(septal_thickness + strand_thickness_width)
+# in steps of strand_thickness_width, then converted to simulation units (/5).
+#
+# Number of y-bins = len(y_edges) - 1  ← use this, NOT len(y_edges)
+
+strand_thickness_width = 4.5          # nm — width of one strand
+septal_thickness       = 40           # nm — total ring thickness (Wenzel PNAS 2020)
+
+y_edges = np.arange(
+    -septal_thickness - strand_thickness_width,
+     septal_thickness + strand_thickness_width,
+     strand_thickness_width
+) / 5  # convert nm → simulation units (1 sim unit = 5 nm)
+
+N_Y_BINS = len(y_edges) - 1  # number of actual y-bins (edges - 1); used for threshold
+
 
 # ── Circle fitting ────────────────────────────────────────────────────────────
 def fit_circle(coords):
@@ -19,13 +33,13 @@ def fit_circle(coords):
 
     Parameters
     ----------
-    coords : np.ndarray
-        Array of shape (N, 2) containing 2D points [[x1, y1], [x2, y2], ...].
+    coords : np.ndarray, shape (N, 2)
+        2D boundary points [[x1, y1], [x2, y2], ...].
 
     Returns
     -------
     xc, yc, r : float
-        Circle center coordinates (xc, yc) and radius r.
+        Circle center (xc, yc) and radius r.
     """
     x = coords[:, 0]
     y = coords[:, 1]
@@ -44,201 +58,281 @@ def fit_circle(coords):
 
 # ── LAMMPS helpers ────────────────────────────────────────────────────────────
 def deform_cmd(Lx_half):
-    """Return a LAMMPS deform command string for the given half-length."""
+    """Return a LAMMPS fix deform command string for the given half box-length."""
     return f"fix 1 all deform 1 x final -{Lx_half} {Lx_half} remap x"
 
 
-# ── Inward deformation ────────────────────────────────────────────────────────
+# ── Inward deformation histogram ─────────────────────────────────────────────
 def calc_inward_deformations(df, fulldf, timesteps=100,
-                             N=200,             # number of bins around the circumference
-                             y_edges=y_edges,
-                             #yconsider=Y_CONSIDER,
-                             #Nbins_y=N_BINS_Y
-                             ):
+                             N=200,        # number of x-bins around the circumference
+                             y_edges=y_edges):
     """
-    Compute inward deformations using histogram data.
-    The full 2D histogram (N, Nbins_y) is preserved per frame so that
-    the y-dimension can be collapsed later (e.g. mean over y for coverage mask).
+    Build a 2D particle-count histogram (x × y) for each time frame.
+
+    x-bins represent positions around the circumference (N bins).
+    y-bins represent strand-slot positions along the long cell axis,
+    sized by strand_thickness_width so each bin = one strand layer.
+    The y-dimension is preserved here and collapsed only later.
+
+    x-bin edges are derived from fulldf (all particle types) each frame,
+    so they track the simulation box extent rather than just typed particles.
 
     Parameters
     ----------
     df : pd.DataFrame
-        Filtered dataframe (type 5/9 particles).
+        Strand particles only (e.g. types 5/9) — contribute to histogram counts.
     fulldf : pd.DataFrame
-        Full dataframe used to determine x-limits per frame.
+        All particle types — used only to set x-bin edges per frame.
     timesteps : int
-        Number of evenly-spaced time steps to evaluate.
+        Number of evenly-spaced time points to evaluate.
     N : int
-        Number of x bins (around the circumference).
-    yconsider : float
-        Half-width of y range to consider.
-    Nbins_y : int
-        Number of bins along the long (y) axis.
+        Number of x-bins (circumference direction).
+    y_edges : np.ndarray
+        Bin edges along y (long axis), in simulation units.
+        Number of y-bins = len(y_edges) - 1.
 
     Returns
     -------
-    np.ndarray of shape (timesteps, N, Nbins_y)
+    np.ndarray, shape (timesteps, N, N_Y_BINS)
+        axis 0 = time frames
+        axis 1 = x-bins (circumference)
+        axis 2 = y-bins (long axis / strand slots)
     """
     t_steps = np.linspace(df["time"].min(), df["time"].max(), timesteps)
     delta_t = np.diff(t_steps)[0]
-    # y_edges = np.linspace(-yconsider, yconsider, Nbins_y + 1)
+    n_ybins = len(y_edges) - 1  # actual number of y-bins
     inward_deformations = []
-    print("---"*5, "calculating deformations for times", t_steps, "---"*5,)
+
+    print("─" * 15, "calculating deformations for times", t_steps, "─" * 15)
+
     for t in tqdm(t_steps, leave=False):
+        # x-edges from ALL particles → consistent with simulation box size
         dft_full = fulldf[(fulldf["time"] >= t - delta_t) & (fulldf["time"] < t)]
         if len(dft_full) == 0:
-            inward_deformations.append(np.zeros((N, len(y_edges))))
+            inward_deformations.append(np.zeros((N, n_ybins)))
             continue
 
+        # N bins → N+1 edges, spanning full box x-extent this frame
         xbins = np.linspace(dft_full["x"].min(), dft_full["x"].max(), N + 1)
 
+        # Histogram only strand particles
         df_t = df[(df["time"] >= t - delta_t) & (df["time"] < t)]
         if len(df_t) == 0:
-            inward_deformations.append(np.zeros((N, len(y_edges))))
+            inward_deformations.append(np.zeros((N, n_ybins)))
             continue
 
+        # H[i, j] = strand particle count in x-bin i, y-bin j
+        #   axis 0 = x (circumference), length N
+        #   axis 1 = y (long axis / strand slots), length n_ybins
+        # y is NOT collapsed here — preserved so threshold logic can sum over it later
         H, _, _ = np.histogram2d(df_t["x"], df_t["y"], bins=[xbins, y_edges])
-        inward_deformations.append(H)   # shape (N, Nbins_y) — y preserved
+        inward_deformations.append(H)  # (N, n_ybins)
 
-    return np.array(inward_deformations)  # shape (timesteps, N, Nbins_y)
+    return np.array(inward_deformations)  # (timesteps, N, n_ybins)
 
 
 # ── Radii computation ─────────────────────────────────────────────────────────
-def calc_radii(inward_deformations, N, timesteps,
-               circumference,
-               strandwidth=4.5  # nm
-               ):
+def calc_radii(inward_deformations, N, timesteps, circumference,
+               strandwidth=4.5):  # nm
     """
-    Compute the evolving (x, y) coordinates of the inward-deformed boundary
-    over time, given inward deformation magnitudes at each frame.
+    Compute the evolving boundary coordinates as the ring constricts.
+
+    Each frame, the local radius is reduced by:
+        delta_r[i] = strand_count_in_bin[i] * strandwidth
+    Radii accumulate inward over frames (never reset).
 
     Parameters
     ----------
-    inward_deformations : np.ndarray
-        Array of shape (timesteps, N) containing inward deformation magnitudes
-        per angle bin.
+    inward_deformations : np.ndarray, shape (timesteps, N)
+        Per-frame, per-bin strand counts (y already collapsed before passing in).
     N : int
-        Number of angular bins (points around the circumference).
+        Number of angular bins.
     timesteps : int
-        Number of time steps corresponding to `inward_deformations`.
+        Number of time frames.
     circumference : float
-        Current circumference used to derive the initial radius.
+        Current box circumference (simulation units) → sets initial radius.
     strandwidth : float
-        Deposition factor in nm (default 4.5).
+        Radial reduction per strand, in nm (default 4.5).
 
     Returns
     -------
-    np.ndarray of shape (timesteps, N, 2)
-        (x, y) coordinates of the boundary for each timestep.
+    np.ndarray, shape (timesteps, N, 2)
+        (x, y) Cartesian boundary coordinates for each frame.
     """
-    deposition_factor = strandwidth
-    # D0 = 1200  # nm — retained for future reference, not currently used
+    # D0 = 1200  # nm — initial diameter, retained for reference, not currently used
 
-    radius = circumference / (2 * np.pi)
+    radius = circumference / (2 * np.pi)  # initial radius, uniform around ring
     angles = np.linspace(0, 2 * np.pi, N, endpoint=False)
-    radii  = np.full(N, radius)
+    radii  = np.full(N, radius)           # shape (N,), updated cumulatively each frame
 
     stored_coordinates = []
-    for frame in range(timesteps):           # FIX: iterate over range, not the int
-        delta_r = inward_deformations[frame] * deposition_factor
-        radii   = np.maximum(0, radii - delta_r)
+    for frame in range(timesteps):
+        # Reduce radius by strandwidth for each strand counted in this bin
+        delta_r = inward_deformations[frame] * strandwidth  # (N,)
+        radii   = np.maximum(0, radii - delta_r)            # clamp: radius >= 0
         x = radii * np.cos(angles)
         y = radii * np.sin(angles)
-        stored_coordinates.append(np.column_stack((x, y)))
+        stored_coordinates.append(np.column_stack((x, y)))  # (N, 2)
 
-    return np.array(stored_coordinates)
+    return np.array(stored_coordinates)  # (timesteps, N, 2)
 
 
 # ── Coverage tracker ──────────────────────────────────────────────────────────
 class CoverageTracker:
     """
-    Tracks cumulative angular coverage across repeated calls,
-    replacing the previous module-level global variable.
+    Tracks cumulative strand coverage across simulation steps.
 
-    Usage (in your main script)
-    ---------------------------
+    Physical interpretation
+    -----------------------
+    _cumulative[i, j] = total strand particles observed in
+                        x-bin i, y-bin j across all calls so far.
+
+    Each y-bin corresponds to one strand-width layer within the septal thickness.
+    A constriction step at x-bin i is triggered when enough strand slots are
+    filled — i.e. when the summed coverage across all y-bins exceeds
+    threshold * N_Y_BINS (where threshold is a fraction, e.g. 0.5 = 50%).
+
+    Once triggered, the full y-column at bin i is decremented by 1:
+    this "consumes" one complete coverage layer and advances the
+    constriction counter to the next level.
+
+    Usage
+    -----
         tracker = CoverageTracker()
         for step in simulation_steps:
-            result = calc_updated_circ(lmp, tracker, threshold=0.5)
+            result = calc_updated_circ(lmp, tracker, threshold=0.5, ...)
     """
 
     def __init__(self):
-        self._cumulative = None
+        self._cumulative = None  # shape (N, N_Y_BINS), lazy-initialized on first update
 
     def update(self, inwrd_dT):
-        """Accumulate a new coverage frame and return the updated mask."""
+        """
+        Accumulate a new coverage frame into the running total.
+
+        Parameters
+        ----------
+        inwrd_dT : np.ndarray, shape (N, N_Y_BINS)
+            Strand counts summed over time frames for this simulation step.
+        """
         if self._cumulative is None:
             self._cumulative = np.zeros_like(inwrd_dT)
-        self._cumulative += inwrd_dT
-
-        # Reduce bins that surpassed threshold — caller sets threshold
-        return self._cumulative
+        self._cumulative += inwrd_dT  # (N, N_Y_BINS)
 
     def apply_threshold(self, threshold):
-        """Return boolean mask of bins exceeding threshold, then decay those bins.
-        _cumulative has shape (N, Nbins_y).
-        Collapse y by mean → coverage_mask shape (N,)."""
-        coverage_mask = self._cumulative.sum(axis=1)  # (N,)
-        print("coverage averaged along y", coverage_mask)
-        deform = coverage_mask > len(y_edges) * threshold
-        print("---"*5, "deforming", sum(deform), "bins", "---"*5,)
+        """
+        Identify x-bins where coverage justifies a constriction step,
+        then decrement those bins to advance to the next level.
+
+        Threshold logic
+        ---------------
+        coverage_mask[i] = _cumulative[i, :].sum()
+                         = total strand-slot occupancy at x-bin i across all y-bins
+
+        deform[i] = True  if  coverage_mask[i] > threshold * N_Y_BINS
+                    i.e. more than `threshold` fraction of strand slots
+                    have been filled at circumference position i.
+
+        Decay (advancing constriction level)
+        -------------------------------------
+        For each triggered x-bin, subtract 1 from its entire y-column.
+        This treats the column as one complete constriction unit:
+        one full layer of coverage is consumed, moving the ring
+        one step inward at that position.
+
+        Parameters
+        ----------
+        threshold : float
+            Fraction of y-bins that must be filled to trigger constriction
+            (e.g. 0.5 means 50% of strand slots must be occupied).
+
+        Returns
+        -------
+        deform : np.ndarray of bool, shape (N,)
+            True at x-bins where a constriction step is triggered.
+        coverage_mask : np.ndarray of float, shape (N,)
+            Summed y-coverage per x-bin (before decay).
+        """
+        # Sum over all y-bins (strand slots) at each x-bin
+        # (N, N_Y_BINS) → (N,)
+        coverage_mask = self._cumulative.sum(axis=1)
+
+        # Trigger where total occupancy exceeds threshold fraction of all slots
+        deform = coverage_mask > threshold * N_Y_BINS
+        print("─" * 15, f"deforming {deform.sum()} / {len(deform)} x-bins", "─" * 15)
+        print("coverage per x-bin (summed over y-slots):", coverage_mask)
+
+        # Subtract 1 from the entire y-column at triggered bins:
+        # _cumulative[deform] shape: (n_triggered, N_Y_BINS)
+        # -= 1 decrements every y-slot uniformly → one constriction level consumed
         self._cumulative[deform] -= 1
-        self._cumulative = np.maximum(0, self._cumulative)
+        self._cumulative = np.maximum(0, self._cumulative)  # no negative counts
+
         return deform, coverage_mask
 
     def reset(self):
+        """Reset all cumulative coverage to zero (e.g. between independent runs)."""
         self._cumulative = None
 
 
 # ── Main update step ──────────────────────────────────────────────────────────
-def calc_updated_circ(lmp, tracker, threshold, df, fulldf,
-                      #yconsider=Y_CONSIDER, 
-                      N_angular_bins=200):
+def calc_updated_circ(lmp, tracker, threshold, df, fulldf, N_angular_bins=200):
     """
-    One update step: compute deformations, update coverage, fit new circle.
+    One constriction update step:
+      1. Compute per-frame strand histograms over the current time window
+      2. Accumulate coverage and check constriction threshold
+      3. Compute evolving boundary and fit updated circle
 
     Parameters
     ----------
     lmp : lammps instance
-        Active LAMMPS object used to extract box dimensions.
+        Active LAMMPS object for box dimension extraction.
     tracker : CoverageTracker
-        Persistent coverage state across calls.
+        Persistent coverage state — must be the same instance across calls.
     threshold : float
-        Coverage threshold above which deformation is triggered.
+        Fraction of y-bins (strand slots) that must be filled to trigger
+        a constriction step at a given x-bin (e.g. 0.5 = 50% occupancy).
     df : pd.DataFrame
-        Filtered dataframe (types 5/9 particles only).
+        Strand particles only (types 5/9) — for histogram counts.
     fulldf : pd.DataFrame
-        Full dataframe (all particle types) for x-limit determination.
-    yconsider : float
-        Half-width of y range to consider.
+        All particle types — for x-bin edge determination per frame.
     N_angular_bins : int
-        Number of angular bins.
+        Number of x-bins around the circumference.
 
     Returns
     -------
-    circumference_updated, xc, yc, r, inwrd, coverage_mask, deform
+    circumference_updated : float
+    xc, yc, r : float
+        Fitted circle center and radius.
+    inwrd : np.ndarray, shape (timesteps, N, N_Y_BINS)
+        Raw per-frame histograms.
+    coverage_mask : np.ndarray, shape (N,)
+        Summed y-coverage per x-bin (before decay).
+    deform : np.ndarray of bool, shape (N,)
+        Which x-bins triggered a constriction step this call.
     """
-    inwrd = calc_inward_deformations(
-        df, fulldf,
-        N=N_angular_bins,
-        yconsider=yconsider,
-        Nbins_y=N_BINS_Y
-    )
-    # inwrd shape: (timesteps, N, Nbins_y)
-    # sum over timesteps → (N, Nbins_y)
+    # 1. Histograms: shape (timesteps, N, N_Y_BINS)
+    inwrd = calc_inward_deformations(df, fulldf, N=N_angular_bins, y_edges=y_edges)
+
+    # 2. Sum over time frames → total counts this call: (N, N_Y_BINS)
     inwrd_dT = inwrd.sum(axis=0)
 
+    # 3. Accumulate and apply threshold → deform mask: (N,)
     tracker.update(inwrd_dT)
     deform, coverage_mask = tracker.apply_threshold(threshold)
 
+    # 4. Get current circumference from LAMMPS box
     box = lmp.extract_box()
     circumference = box[1][0] - box[0][0]
 
+    # 5. Collapse y-bins for radii: sum over strand slots → total strand count per x-bin
+    #    (timesteps, N, N_Y_BINS) → (timesteps, N)
+    inwrd_collapsed = inwrd.sum(axis=2)
     timesteps = inwrd.shape[0]
-    # collapse y for radii: mean over Nbins_y → (timesteps, N)
-    inwrd_collapsed = inwrd.mean(axis=2)
     radii_coords = calc_radii(inwrd_collapsed, N_angular_bins, timesteps, circumference)
+    # radii_coords: (timesteps, N, 2)
 
+    # 6. Fit circle to the final frame's constricted boundary
     xc, yc, r = fit_circle(radii_coords[-1])
     circumference_updated = 2 * np.pi * r
 
