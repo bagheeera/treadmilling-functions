@@ -113,6 +113,10 @@ def calc_inward_deformations(df, fulldf, timesteps=100,
     Uses module globals y_edges and N_Y_BINS — call set_septal_bins() first
     if you need non-default geometry.
 
+    # timesteps controls how often x-bin edges are recomputed to track
+    # the shrinking simulation box — not the temporal resolution of the physics.
+    # Higher timesteps → finer tracking of box compression, at higher compute cost.
+
     Parameters
     ----------
     df : pd.DataFrame
@@ -136,7 +140,7 @@ def calc_inward_deformations(df, fulldf, timesteps=100,
     n_ybins = len(y_edges) - 1  # read global at call time
     inward_deformations = []
 
-    print("─" * 15, "calculating deformations for times", t_steps, "─" * 15)
+    print("─" * 15, "calculating deformations for times", df["time"].min(),"-", df["time"].max(), "─" * 15)
 
     for t in tqdm(t_steps, leave=False):
         # x-edges from ALL particles → consistent with simulation box size
@@ -266,12 +270,16 @@ class CoverageTracker:
 
         Threshold logic
         ---------------
-        coverage_mask[i] = _cumulative[i, :].sum()
-                         = total strand-slot occupancy at x-bin i across all y-bins
+        coverage_mask[i] = number of y-bins with at least one observed particle
+                        at x-bin i, i.e. (cumulative[i, :] > 0).sum()
+
+        This measures *breadth* of coverage — how many distinct strand-slot
+        positions have been visited — rather than total particle count.
+        A single overactive y-bin therefore cannot alone trigger constriction.
 
         deform[i] = True  if  coverage_mask[i] > threshold * N_Y_BINS
                     i.e. more than `threshold` fraction of strand slots
-                    have been filled at circumference position i.
+                    have been occupied at least once at circumference position i.
 
         Decay (advancing constriction level)
         -------------------------------------
@@ -283,25 +291,25 @@ class CoverageTracker:
         Parameters
         ----------
         threshold : float
-            Fraction of y-bins that must be filled to trigger constriction
-            (e.g. 0.5 means 50% of strand slots must be occupied).
+            Fraction of y-bins that must be occupied to trigger constriction
+            (e.g. 0.5 means 50% of strand slots must have been visited).
 
         Returns
         -------
         deform : np.ndarray of bool, shape (N,)
             True at x-bins where a constriction step is triggered.
-        coverage_mask : np.ndarray of float, shape (N,)
-            Summed y-coverage per x-bin (before decay).
+        coverage_mask : np.ndarray of int, shape (N,)
+            Number of occupied y-slots per x-bin (before decay).
         """
-        # Sum over all y-bins (strand slots) at each x-bin
-        # (N, N_Y_BINS) → (N,)
-        coverage_mask = self._cumulative.sum(axis=1)
+        # Count y-bins with at least one particle at each x-bin
+        # (N, N_Y_BINS) → (N,)  — breadth, not depth
+        coverage_mask = (self._cumulative > 0).sum(axis=1)
 
-        # Trigger where total occupancy exceeds threshold fraction of all slots
+        # Trigger where fraction of occupied y-slots exceeds threshold
         # N_Y_BINS read from module global at call time
         deform = coverage_mask > threshold * N_Y_BINS
         print("─" * 15, f"deforming {deform.sum()} / {len(deform)} x-bins", "─" * 15)
-        print("coverage per x-bin (summed over y-slots):", coverage_mask)
+        print("occupied y-slots per x-bin:", coverage_mask)
 
         # Subtract 1 from the entire y-column at triggered bins:
         # _cumulative[deform] shape: (n_triggered, N_Y_BINS)
@@ -379,3 +387,63 @@ def calc_updated_circ(lmp, tracker, threshold, df, fulldf, N_angular_bins=200):
     circumference_updated = 2 * np.pi * r
 
     return circumference_updated, xc, yc, r, inwrd, coverage_mask, deform
+
+
+
+
+
+## analysis functions
+from matplotlib.cm import get_cmap
+def circle_plot(D, key, ax, tcut=None, lw=.8, alpha=.9,
+skip=10):
+    """
+    Plot the evolving constriction ring over time, colored by viridis.
+
+    Center position accumulates across iterations (tracks ring drift).
+    Coordinates converted from simulation units to nm (*5).
+
+    Parameters
+    ----------
+    key : str
+        Key into D for the dataset to plot.
+    ax : matplotlib Axes
+    tcut : float, optional
+        Only plot iterations with t < tcut.
+    lw : float
+        Line width for circle outlines.
+    alpha : float
+        Opacity for circle outlines.
+    """
+    # circumferences entries are [circumference_updated, t, xc, yc, r]
+    circ = np.array(D[key]["circumference"])  # shape (n_iterations, 5)
+    if tcut is not None:                      # note: `if tcut` fails when tcut=0
+        circ = circ[circ[:, 1] < tcut]
+
+    colors = [get_cmap("viridis")(x) for x in np.linspace(0, 1, len(circ))]
+    angles = np.linspace(0, 2 * np.pi, 300, endpoint=False)  # precompute once
+
+    # cumulative center tracks drift of ring position over time (in nm)
+    xc_cumulative, yc_cumulative = 0.0, 0.0
+
+    for i, (circumference_updated, t, xc, yc, r) in enumerate(circ):
+        # convert simulation units → nm
+        xc_nm = xc * 5
+        yc_nm = yc * 5
+        r_nm  = r  * 5
+
+        # accumulate center drift
+        xc_cumulative += xc_nm
+        yc_cumulative += yc_nm
+
+        if i % skip == 0:  # plot every 10th iteration
+            ax.plot(
+                xc_cumulative + r_nm * np.cos(angles),
+                yc_cumulative + r_nm * np.sin(angles),
+                color=colors[i], lw=lw, alpha=alpha
+            )
+            ax.scatter(
+                xc_cumulative, yc_cumulative,
+                marker="x", color=colors[i], s=10
+            )
+
+    ax.set_aspect('equal')
