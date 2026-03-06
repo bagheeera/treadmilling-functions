@@ -663,6 +663,7 @@ def plot_division(df, ax,
                   synths=6,
                   hideticklabels=False,
                   ylim=30,
+                  show_quantiles=True,
                   sZ=1):
     """
     Plot the current frame of a filament/division dataset.
@@ -695,7 +696,8 @@ def plot_division(df, ax,
             mask = abs(D_divi["y"]) < 30
             if mask.any():
                 quant = np.quantile(D_divi.loc[mask, "y"]*5, q)
-                ax.hlines(y=quant, xmin=df["x"].min()*5, xmax=df["x"].max()*5, ls="--", lw=1,
+                if show_quantiles:
+                    ax.hlines(y=quant, xmin=df["x"].min()*5, xmax=df["x"].max()*5, ls="--", lw=1,
                           color="#f72585", alpha=0.7)
     
     # Axes settings
@@ -903,7 +905,7 @@ def plot_sept(D, key, ax, pngscale=3):
     else:
         print(key,  "not found")
 
-
+import pyarrow.feather as feather
 import matplotlib.image as mpimg
 def display_png(fname, ax,
 crop=(300, -100, 500, -500)):
@@ -915,3 +917,12 @@ crop=(300, -100, 500, -500)):
         ax.axis('off')  # hide axes
     else:
         print("missing", fname)
+
+def plot_nr_active(D, key, ax, overlay):
+    if "nr_active" not in D[key]:
+        df = feather.read_feather(D[key]["rundir"] + "/df_synth.feather")
+        D[key]["nr_active"] = df.groupby("time").size()
+        nr_active = D[key]["nr_active"]
+    else:
+        nr_active = D[key]["nr_active"]
+    return ax.plot(nr_active, label=overlay)

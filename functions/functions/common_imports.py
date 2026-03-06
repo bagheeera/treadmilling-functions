@@ -24,3 +24,35 @@ plt.rcParams.update(
     )
 )
 import functions as fct
+
+__all__ = [
+    # core numerics / data
+    "np",
+    "pd",
+    "math",
+    "random",
+
+    # plotting
+    "plt",
+    "ccycle",
+
+    # progress / UI
+    "tqdm",
+    "widgets",
+
+    # IO / utilities
+    "os",
+    "pickle",
+    "feather",
+
+    # scientific helpers
+    "curve_fit",
+
+    # tueplots styling
+    "cycler",
+    "markers",
+    "palettes",
+
+    # your own helpers
+    "fct",
+]

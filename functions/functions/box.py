@@ -28,7 +28,8 @@ def synth_scatter(ax, key, D, boxcolor="r", cmap="PuRd",
     # times 5
     df.loc[:, ["x", "y"]] = df.loc[:, ["x", "y"]] * 5
     ax.hist2d(*df[["x", "y"]].values.T, bins=bins,
-    cmap=cmap)
+    cmap=cmap,
+    density=True,)
     # synth_scatter(ax, key)
     ax.set_aspect("equal")
     # Square corners
@@ -317,7 +318,7 @@ def orientation_plot(ax, x_minmax, y_minmax, d_x_mean, d_y_mean, x_edges, y_edge
     q = ax.quiver(X, Y, U, V, **quiver_kwargs)
 
     if usecmap:
-        q.set_array(C)
+        q.set_array(C.ravel())  # Use .ravel() to flatten to 1D
         q.set_cmap(cmap)
         q.set_clim(-1, 1)
 
@@ -368,3 +369,95 @@ def plot_fract_in_box(
     # ax.fill_between(x, mean_fract - std_fract, mean_fract + std_fract, alpha=0.3)
     ax.legend()
 
+def deathplot(D, key, ax, xycut=80, vmax=None, drop_before=0):
+    deaths = D[key]["final_positions_lt_5"].copy()
+    deaths.loc[:, "x"] = deaths["x"] * 5
+    deaths.loc[:, "y"] = deaths["y"] * 5
+    deaths = deaths[deaths["time"] >= drop_before]
+    deaths = deaths[(deaths["x"].between(-xycut, xycut))
+                    & (deaths["y"].between(-xycut, xycut))
+                    ]
+    h = ax.hist2d(*deaths[["x", "y"]].values.T, bins=50, vmax=vmax)
+    return h
+
+
+import math
+import os
+import pickle
+import numpy as np
+import matplotlib.pyplot as plt
+import functions as fct
+
+def plot_key_displacements(key, D, n_windows=5, scale=0.5, spatial_scale=5, 
+                           quiver_density=3, quiver_length_cut=200, N_bins=75):
+    # --- Check/Load Cache ---
+    if 'disp_data' not in D[key]:
+        pkl_path = os.path.join(D[key]['rundir'], "Z_displacements.pkl")
+        if not os.path.exists(pkl_path): return None
+        with open(pkl_path, "rb") as f:
+            D[key]['disp_data'] = pickle.load(f)
+    
+    disp = D[key]['disp_data']
+    # ------------------------
+
+    if not disp or len(disp[0]) == 0: 
+        return None
+
+    # 2. Precise Time Windowing
+    tmax = np.concatenate(disp[-1]).max()
+    # np.linspace ensures exactly n_windows intervals
+    time_edges = np.linspace(0, tmax, n_windows + 1)
+    windows = [(time_edges[i], time_edges[i+1]) for i in range(n_windows)]
+    
+    # Add the full-time average as the final entry
+    windows.append((0, tmax))
+    
+    # 3. Grid Setup
+    n_plots = len(windows) # Always n_windows + 1
+    n_cols = min(5, n_plots)
+    n_rows = math.ceil(n_plots / n_cols)
+
+    fig, axes = plt.subplots(
+        n_rows, n_cols,
+        figsize=(scale * 4 * n_cols, scale * 4 * n_rows),
+        sharex=True, sharey=True
+    )
+    axes = np.atleast_1d(axes).ravel()
+
+    # 4. Plotting Loop
+    for i, window in enumerate(windows):
+        ax = axes[i]
+        is_avg = (i == n_plots - 1)
+        
+        filtered_xy, filtered_d_xy, _ = fct.midcell_transport.filter_by_time(*disp, window)
+        
+        if filtered_xy.size > 0:
+            filtered_xy *= spatial_scale
+            filtered_d_xy *= spatial_scale
+
+            x_minmax, y_minmax, d_x_mean, d_y_mean, x_edges, y_edges, _ = fct.midcell_transport.bin_dxy(
+                filtered_xy, filtered_d_xy, N_bins=N_bins, yrange=spatial_scale * 100
+            )
+
+            fct.box.orientation_plot(
+                ax, x_minmax, y_minmax, d_x_mean, d_y_mean, x_edges, y_edges,
+                quiver_density=quiver_density, cut=quiver_length_cut
+            )
+
+        # Clean Title Logic
+        ax.set_title("Full time avg" if is_avg else r"$t$=" + f"{window[0]:.0f}-{window[1]:.0f}s")
+
+    # 5. Formatting & Cleanup
+    extent = 90 * spatial_scale
+    for a in axes[:n_plots]:
+        a.set_xlim(-extent, extent)
+        a.set_ylim(-extent, extent)
+        a.set_aspect("equal")
+
+    # Hide the "leftover" empty axes in the grid
+    for j in range(n_plots, len(axes)):
+        axes[j].axis("off")
+
+    fig.suptitle(f"Key: {key}", y=1.02)
+    fig.tight_layout()
+    return fig, axes

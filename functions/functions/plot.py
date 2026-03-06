@@ -8,7 +8,8 @@ def plot_data_(prm_sets, D, grid_params, overlay_params, plot_function, check_ke
               fixed_params=None, axis_edits=None, figsize_=None, 
               sharex=True, sharey=True, renamedict=None,
               return_fig=False,
-              print_keys=False):
+              print_keys=False,
+              xlabelpad=0):
     """
     Generates a grid of subplots for each combination of parameters in `figure_params`,
     using `grid_params` to define the subplot layout and optionally overlaying data
@@ -138,7 +139,7 @@ def plot_data_(prm_sets, D, grid_params, overlay_params, plot_function, check_ke
                     column_label = grid_params[0]
                     row_label = grid_params[1]
                 if j == 0:
-                    subplot_ax.annotate(f"{column_label}={grid1}", xy=(-0.3, 0.5), 
+                    subplot_ax.annotate(f"{column_label}={grid1}", xy=(-0.3+xlabelpad, 0.5), 
                                         xycoords="axes fraction",
                                         ha="right", va="center", fontsize=10, fontweight="bold")
                 if i == 0:
@@ -183,19 +184,19 @@ def plot_data_(prm_sets, D, grid_params, overlay_params, plot_function, check_ke
 
 
 
-def histos_w_mean(key, ax, subkey, bins, D, overlaylabel, overlay=None):
-# Plot the histogram
+def histos_w_mean(key, ax, subkey, bins, D, overlaylabel, overlay=None,
+                  show_mean_label=True):
     n, bins, patches = ax.hist(D[key][subkey], histtype="step", lw=3,
             density=True,
             bins=bins,
-            label=f"{overlaylabel}={overlay}")
+            label=f"{overlaylabel}={overlay}" if overlay is not None else overlaylabel)
 
     # Calculate and plot the mean as a vertical line
     # Extract the color from the first patch (line)
     color = patches[0].get_edgecolor()
     mean_value = np.mean(D[key][subkey])
     ax.axvline(mean_value, color=color, linestyle='--', lw=2, 
-               label=f"Mean={mean_value:.2f}")
+               label=f"Mean={mean_value:.2f}" if show_mean_label else None)
 
 
 import os

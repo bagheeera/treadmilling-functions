@@ -837,7 +837,7 @@ echo "Running analysis for directory: $rundir"
 {export_lines}
 export rundir="$rundir"
 
-srun python {py_file}
+srun python -u {py_file}
 """
 
     with open(submit_file, "w") as f:
