@@ -16,7 +16,7 @@ import functions as fct
 # passed as default arguments, so set_septal_bins() propagates everywhere.
 
 NM_PER_SIM_UNIT        = 5     # 1 simulation unit = 5 nm
-strand_thickness_width = 4.5   # nm — width of one strand; also radial step in calc_radii
+strand_thickness_width = 4.5   # nm — width of one strand; also radial step in apply_deform
 septal_thickness       = 40    # nm — total ring thickness (Wenzel PNAS 2020)
 
 # Initialized below via set_septal_bins() — do not set manually
@@ -32,14 +32,14 @@ def set_septal_bins(strand_width_nm=strand_thickness_width,
     Call this once at startup (done automatically on import), or any time you
     want to change the strand/septal geometry. Because all functions read
     y_edges and N_Y_BINS from module globals at call time, a single call here
-    propagates to calc_inward_deformations, CoverageTracker, and calc_radii
-    without needing to restart or pass anything manually.
+    propagates to calc_inward_deformations and CoverageTracker without needing
+    to restart or pass anything manually.
 
     Parameters
     ----------
     strand_width_nm : float
         Width of one strand in nm. Sets both y-bin size and the radial
-        constriction step in calc_radii (via strand_thickness_width).
+        constriction step in apply_deform (via strand_thickness_width).
     septal_thickness_nm : float
         Total ring thickness in nm (default: 40 nm, Wenzel PNAS 2020).
     """
@@ -140,7 +140,8 @@ def calc_inward_deformations(df, fulldf, timesteps=100,
     n_ybins = len(y_edges) - 1  # read global at call time
     inward_deformations = []
 
-    print("─" * 15, "calculating deformations for times", df["time"].min(),"-", df["time"].max(), "─" * 15)
+    print("─" * 15, "calculating deformations for times",
+          df["time"].min(), "–", df["time"].max(), "─" * 15)
 
     for t in tqdm(t_steps, leave=False):
         # x-edges from ALL particles → consistent with simulation box size
@@ -168,59 +169,47 @@ def calc_inward_deformations(df, fulldf, timesteps=100,
     return np.array(inward_deformations)  # (timesteps, N, n_ybins)
 
 
-# ── Radii computation ─────────────────────────────────────────────────────────
-def calc_radii(inward_deformations, N, timesteps, circumference):
+# ── Boundary deformation ──────────────────────────────────────────────────────
+def apply_deform(deform, radii, N):
     """
-    Compute the evolving boundary coordinates as the ring constricts.
+    Apply one constriction step to the ring boundary.
 
-    Each frame, the local radius is reduced by:
-        delta_r[i] = strand_count_in_bin[i] * strandwidth_su
-    Radii accumulate inward over frames (never reset between frames).
+    Only x-bins where deform=True are shrunk, by exactly one strandwidth.
+    This replaces the old calc_radii which incorrectly used raw particle counts
+    instead of the threshold decision.
 
-    Uses module global strand_thickness_width (converted to simulation units
-    via NM_PER_SIM_UNIT) — call set_septal_bins() to change it.
+    Uses module global strand_thickness_width (converted to simulation units).
 
     Parameters
     ----------
-    inward_deformations : np.ndarray, shape (timesteps, N)
-        Per-frame, per-bin strand counts (y already collapsed before passing in).
+    deform : np.ndarray of bool, shape (N,)
+        Which x-bins triggered constriction this call.
+    radii : np.ndarray, shape (N,)
+        Current radius at each x-bin in simulation units.
+        Modified in place — owned by CoverageTracker.
     N : int
         Number of angular bins.
-    timesteps : int
-        Number of time frames.
-    circumference : float
-        Current box circumference in simulation units → sets initial radius.
 
     Returns
     -------
-    np.ndarray, shape (timesteps, N, 2)
-        (x, y) Cartesian boundary coordinates for each frame, in simulation units.
+    coords : np.ndarray, shape (N, 2)
+        Updated (x, y) boundary coordinates in simulation units.
     """
-    # D0 = 1200  # nm — initial diameter, retained for reference, not currently used
-
-    # strand_thickness_width is in nm; convert to simulation units for consistency
     strandwidth_su = strand_thickness_width / NM_PER_SIM_UNIT  # nm → sim units
-
-    radius = circumference / (2 * np.pi)  # initial radius, uniform around ring
     angles = np.linspace(0, 2 * np.pi, N, endpoint=False)
-    radii  = np.full(N, radius)           # shape (N,), updated cumulatively each frame
 
-    stored_coordinates = []
-    for frame in range(timesteps):
-        # Each strand reduces the local radius by one strandwidth (in sim units)
-        delta_r = inward_deformations[frame] * strandwidth_su  # (N,)
-        radii   = np.maximum(0, radii - delta_r)               # clamp: radius >= 0
-        x = radii * np.cos(angles)
-        y = radii * np.sin(angles)
-        stored_coordinates.append(np.column_stack((x, y)))     # (N, 2)
+    # Shrink by exactly one strandwidth at triggered bins only
+    radii[deform] = np.maximum(0, radii[deform] - strandwidth_su)
 
-    return np.array(stored_coordinates)  # (timesteps, N, 2)
+    x = radii * np.cos(angles)
+    y = radii * np.sin(angles)
+    return np.column_stack((x, y))  # (N, 2)
 
 
 # ── Coverage tracker ──────────────────────────────────────────────────────────
 class CoverageTracker:
     """
-    Tracks cumulative strand coverage across simulation steps.
+    Tracks cumulative strand coverage and ring boundary across simulation steps.
 
     Physical interpretation
     -----------------------
@@ -228,27 +217,41 @@ class CoverageTracker:
                         x-bin i, y-bin j across all calls so far.
 
     Each y-bin corresponds to one strand-width layer within the septal thickness.
-    A constriction step at x-bin i is triggered when enough strand slots are
-    filled — i.e. when the summed coverage across all y-bins exceeds
-    threshold * N_Y_BINS (where threshold is a fraction, e.g. 0.5 = 50%).
+    A constriction step at x-bin i is triggered when the fraction of occupied
+    y-bins (slots visited at least once) exceeds `threshold`.
 
-    Once triggered, the full y-column at bin i is decremented by 1:
-    this "consumes" one complete coverage layer and advances the
-    constriction counter to the next level.
+    Once triggered:
+    - the full y-column at bin i is decremented by 1 (one constriction level consumed)
+    - the radius at bin i is reduced by one strandwidth via apply_deform()
 
-    Uses module global N_Y_BINS — call set_septal_bins() before instantiating
-    if you need non-default geometry.
+    The ring boundary (radii) is owned by the tracker so it persists correctly
+    across calls without external state management.
+
+    Uses module globals N_Y_BINS and strand_thickness_width —
+    call set_septal_bins() before instantiating if you need non-default geometry.
 
     Usage
     -----
         set_septal_bins()          # optional, if changing defaults
-        tracker = CoverageTracker()
+        box = lmp.extract_box()
+        circumference = box[1][0] - box[0][0]
+        tracker = CoverageTracker(N=N_angular_bins, circumference=circumference)
         for step in simulation_steps:
             result = calc_updated_circ(lmp, tracker, threshold=0.5, ...)
     """
 
-    def __init__(self):
-        self._cumulative = None  # shape (N, N_Y_BINS), lazy-initialized on first update
+    def __init__(self, N, circumference):
+        """
+        Parameters
+        ----------
+        N : int
+            Number of angular x-bins around the circumference.
+        circumference : float
+            Initial box circumference in simulation units → sets initial radius.
+        """
+        self._cumulative = None                              # lazy-initialized on first update
+        self.N      = N
+        self.radii  = np.full(N, circumference / (2 * np.pi))  # uniform initial radius
 
     def update(self, inwrd_dT):
         """
@@ -266,12 +269,12 @@ class CoverageTracker:
     def apply_threshold(self, threshold):
         """
         Identify x-bins where coverage justifies a constriction step,
-        then decrement those bins to advance to the next level.
+        then decrement those bins and shrink the boundary.
 
         Threshold logic
         ---------------
         coverage_mask[i] = number of y-bins with at least one observed particle
-                        at x-bin i, i.e. (cumulative[i, :] > 0).sum()
+                           at x-bin i, i.e. (_cumulative[i, :] > 0).sum()
 
         This measures *breadth* of coverage — how many distinct strand-slot
         positions have been visited — rather than total particle count.
@@ -283,10 +286,9 @@ class CoverageTracker:
 
         Decay (advancing constriction level)
         -------------------------------------
-        For each triggered x-bin, subtract 1 from its entire y-column.
-        This treats the column as one complete constriction unit:
-        one full layer of coverage is consumed, moving the ring
-        one step inward at that position.
+        For each triggered x-bin, subtract 1 from its entire y-column:
+        one full coverage layer is consumed, advancing the constriction counter.
+        The boundary radius at that bin is reduced by exactly one strandwidth.
 
         Parameters
         ----------
@@ -300,6 +302,8 @@ class CoverageTracker:
             True at x-bins where a constriction step is triggered.
         coverage_mask : np.ndarray of int, shape (N,)
             Number of occupied y-slots per x-bin (before decay).
+        coords : np.ndarray, shape (N, 2)
+            Updated boundary coordinates after applying deform.
         """
         # Count y-bins with at least one particle at each x-bin
         # (N, N_Y_BINS) → (N,)  — breadth, not depth
@@ -308,8 +312,7 @@ class CoverageTracker:
         # Trigger where fraction of occupied y-slots exceeds threshold
         # N_Y_BINS read from module global at call time
         deform = coverage_mask > threshold * N_Y_BINS
-        print("─" * 15, f"deforming {deform.sum()} / {len(deform)} x-bins", "─" * 15)
-        print("occupied y-slots per x-bin:", coverage_mask)
+        print("─" * 15, f"deforming {deform.sum()} / {self.N} x-bins", "─" * 15)
 
         # Subtract 1 from the entire y-column at triggered bins:
         # _cumulative[deform] shape: (n_triggered, N_Y_BINS)
@@ -317,11 +320,22 @@ class CoverageTracker:
         self._cumulative[deform] -= 1
         self._cumulative = np.maximum(0, self._cumulative)  # no negative counts
 
-        return deform, coverage_mask
+        # Apply radial shrinkage — modifies self.radii in place at deform=True bins
+        coords = apply_deform(deform, self.radii, self.N)
 
-    def reset(self):
-        """Reset all cumulative coverage to zero (e.g. between independent runs)."""
+        return deform, coverage_mask, coords
+
+    def reset(self, circumference):
+        """
+        Reset coverage and boundary to a new initial circumference.
+
+        Parameters
+        ----------
+        circumference : float
+            New circumference in simulation units to reinitialize radii.
+        """
         self._cumulative = None
+        self.radii = np.full(self.N, circumference / (2 * np.pi))
 
 
 # ── Main update step ──────────────────────────────────────────────────────────
@@ -330,16 +344,20 @@ def calc_updated_circ(lmp, tracker, threshold, df, fulldf, N_angular_bins=200):
     One constriction update step:
       1. Compute per-frame strand histograms over the current time window
       2. Accumulate coverage and check constriction threshold
-      3. Compute evolving boundary and fit updated circle
+      3. Apply radial shrinkage at triggered bins and fit updated circle
+
+    If deform is all False (threshold not met anywhere), circumference_updated
+    will equal the current fitted circumference with no change — deform_cmd
+    should be gated on deform.any() in the main script.
 
     Parameters
     ----------
     lmp : lammps instance
         Active LAMMPS object for box dimension extraction.
     tracker : CoverageTracker
-        Persistent coverage state — must be the same instance across calls.
+        Persistent coverage and boundary state — same instance across calls.
     threshold : float
-        Fraction of y-bins (strand slots) that must be filled to trigger
+        Fraction of y-bins (strand slots) that must be occupied to trigger
         a constriction step at a given x-bin (e.g. 0.5 = 50% occupancy).
     df : pd.DataFrame
         Strand particles only (types 5/9) — for histogram counts.
@@ -351,12 +369,13 @@ def calc_updated_circ(lmp, tracker, threshold, df, fulldf, N_angular_bins=200):
     Returns
     -------
     circumference_updated : float
+        Updated circumference from circle fit. Unchanged if deform.any()==False.
     xc, yc, r : float
         Fitted circle center and radius.
     inwrd : np.ndarray, shape (timesteps, N, N_Y_BINS)
         Raw per-frame histograms.
     coverage_mask : np.ndarray, shape (N,)
-        Summed y-coverage per x-bin (before decay).
+        Number of occupied y-slots per x-bin (before decay).
     deform : np.ndarray of bool, shape (N,)
         Which x-bins triggered a constriction step this call.
     """
@@ -367,28 +386,13 @@ def calc_updated_circ(lmp, tracker, threshold, df, fulldf, N_angular_bins=200):
     # 2. Sum over time frames → total counts this call: (N, N_Y_BINS)
     inwrd_dT = inwrd.sum(axis=0)
 
-    # 3. Accumulate and apply threshold → deform mask: (N,)
+    # 3. Accumulate coverage, apply threshold, shrink boundary at triggered bins
+    #    tracker.radii updated in place; coords reflects post-deform boundary
     tracker.update(inwrd_dT)
-    deform, coverage_mask = tracker.apply_threshold(threshold)
+    deform, coverage_mask, coords = tracker.apply_threshold(threshold)
 
-    # 4. Get current circumference from LAMMPS box
-    box = lmp.extract_box()
-    circumference = box[1][0] - box[0][0]
-
-    # 5. Collapse y-bins: sum over strand slots → total strand count per x-bin per frame
-    #    (timesteps, N, N_Y_BINS) → (timesteps, N)
-    inwrd_collapsed = inwrd.sum(axis=2)
-    timesteps = inwrd.shape[0]
-    radii_coords = calc_radii(inwrd_collapsed, N_angular_bins, timesteps, circumference)
-    # radii_coords: (timesteps, N, 2)
-
-    # 6. Fit circle to the final frame's constricted boundary
-    xc, yc, r = fit_circle(radii_coords[-1])
+    # 4. Fit circle to updated boundary
+    xc, yc, r = fit_circle(coords)
     circumference_updated = 2 * np.pi * r
 
     return circumference_updated, xc, yc, r, inwrd, coverage_mask, deform
-
-
-
-
-
