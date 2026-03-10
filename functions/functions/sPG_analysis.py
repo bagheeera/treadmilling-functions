@@ -497,6 +497,66 @@ def coverage_widget(inwrd, coverage_mask, deform, threshold,
     interact(_plot, t1=slider, mode=toggle)
 
 
+def snapshots_widget(inwrd, deform):
+    """
+    Plot snapshots.mean(axis=1) — average y-bin occupancy per iteration,
+    averaged over all x-bins. Shows how cumulative coverage (with decay)
+    evolves over time.
+
+    snapshots[i] = tracker._cumulative state at iteration i,
+                   reconstructed from inwrd and deform.
+    snapshots.mean(axis=1) : (n_iter, N_Y_BINS) — mean over x-bins (axis=1)
+
+    Parameters
+    ----------
+    inwrd : np.ndarray, shape (n_iterations, timesteps, N, N_Y_BINS)
+    deform : np.ndarray of bool, shape (n_iterations, N)
+    """
+    n_iter   = inwrd.shape[0]
+    N_Y_BINS = inwrd.shape[3]
+
+    # Reconstruct tracker snapshots — same logic as coverage_widget
+    _cumulative = np.zeros_like(inwrd[0].sum(axis=0))  # (N, N_Y_BINS)
+    snapshots = []
+    for i in range(n_iter):
+        _cumulative = _cumulative + inwrd[i].sum(axis=0)
+        _cumulative[deform[i]] -= 1
+        _cumulative = np.maximum(0, _cumulative)
+        snapshots.append(_cumulative.copy())
+    snapshots = np.array(snapshots)  # (n_iter, N, N_Y_BINS)
+
+    # Mean over x-bins → (n_iter, N_Y_BINS)
+    mean_over_x = snapshots.mean(axis=1)
+
+    def _plot(t1):
+        fig, ax = plt.subplots(figsize=(13, 4), facecolor="#0e1117")
+        _dark_ax(ax)
+
+        im = ax.imshow(
+            mean_over_x[:t1].T,         # (N_Y_BINS, t1) — time on x, y-bins on y
+            aspect="auto",
+            origin="lower",
+            cmap="magma",
+            interpolation="nearest",
+            extent=[0, t1, 0, N_Y_BINS],
+        )
+        fig.colorbar(im, ax=ax, orientation="vertical", shrink=0.8, pad=0.01
+                     ).ax.tick_params(colors="#aaaaaa", labelsize=7)
+
+        ax.set_xlabel("iteration", color="#aaaaaa", fontsize=9)
+        ax.set_ylabel("y-bin (strand slot)", color="#aaaaaa", fontsize=9)
+        ax.set_title("Mean tracker occupancy over x-bins (n_iter × N_Y_BINS)",
+                     color="#dddddd", fontsize=10)
+        plt.tight_layout()
+        plt.show()
+
+    interact(_plot, t1=widgets.IntSlider(
+        value=n_iter, min=1, max=n_iter, step=1,
+        description="Up to iter:",
+        style={"description_width": "80px"},
+        layout=widgets.Layout(width="70%")
+    ))
+
 # ── Circle plot ───────────────────────────────────────────────────────────────
 
 def circle_plot(D, key, ax, tcut=None, lw=.8, alpha=.9):
