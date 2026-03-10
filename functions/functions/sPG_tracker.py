@@ -338,8 +338,151 @@ class CoverageTracker:
         self.radii = np.full(self.N, circumference / (2 * np.pi))
 
 
+# ── Cumulative-max tracker ────────────────────────────────────────────────────
+
+def apply_deform_cummax(peak_counts, radii_initial, N):
+    """
+    Set ring radii from cumulative peak y-bin counts relative to initial radius.
+
+    Rather than a binary threshold + decay, each x-bin is pushed inward by
+    exactly peak_counts[i] * strandwidth_su from its initial (run-start) radius.
+    This is continuous and monotonically inward — no consumption, no reset.
+
+    Parameters
+    ----------
+    peak_counts : np.ndarray, shape (N,)
+        Max cumulative count over all y-bins at each x-bin:
+        peak_counts = _cumulative.max(axis=1)
+    radii_initial : np.ndarray, shape (N,)
+        Run-start radii in simulation units. Never modified.
+    N : int
+        Number of angular bins.
+
+    Returns
+    -------
+    radii : np.ndarray, shape (N,)
+        Updated radii in simulation units.
+    coords : np.ndarray, shape (N, 2)
+        Updated (x, y) boundary coordinates.
+    """
+    strandwidth_su = strand_thickness_width / NM_PER_SIM_UNIT
+    angles = np.linspace(0, 2 * np.pi, N, endpoint=False)
+
+    radii = np.maximum(0, radii_initial - peak_counts * strandwidth_su)
+    coords = np.column_stack((radii * np.cos(angles), radii * np.sin(angles)))
+    return radii, coords
+
+
+class CoverageTrackerCumMax:
+    """
+    Tracks cumulative strand coverage and drives constriction from the
+    peak y-bin count at each x-bin position.
+
+    Physical interpretation
+    -----------------------
+    _cumulative[i, j] = total strand particles in x-bin i, y-bin j across
+                        all calls so far (strictly monotonic, no decay).
+
+    At each call, the radius at x-bin i is set to:
+        r[i] = r_initial[i] - max_j(_cumulative[i, j]) * strandwidth_su
+
+    where r_initial is fixed at run start. The ring is pushed inward as far
+    as the highest-occupancy y-bin layer currently dictates — no threshold,
+    no consumption.
+
+    Uses module globals N_Y_BINS and strand_thickness_width.
+    Call set_septal_bins() before instantiating if you need non-default geometry.
+    """
+
+    def __init__(self, N, circumference):
+        """
+        Parameters
+        ----------
+        N : int
+            Number of angular x-bins.
+        circumference : float
+            Initial box circumference in simulation units → sets r_initial.
+        """
+        self._cumulative = None
+        self.N            = N
+        r0                = circumference / (2 * np.pi)
+        self.radii_initial = np.full(N, r0)   # fixed for entire run
+        self.radii         = np.full(N, r0)   # updated each call
+
+    def update(self, inwrd_dT):
+        """Accumulate a new coverage frame. Shape: (N, N_Y_BINS)."""
+        if self._cumulative is None:
+            self._cumulative = np.zeros_like(inwrd_dT)
+        self._cumulative += inwrd_dT
+
+    def apply_cummax(self):
+        """
+        Update radii from current cumulative peak counts.
+
+        Returns
+        -------
+        peak_counts : np.ndarray, shape (N,)
+            Max cumulative count over y-bins at each x-bin.
+        coords : np.ndarray, shape (N, 2)
+            Updated boundary coordinates.
+        """
+        peak_counts = self._cumulative.max(axis=1)   # (N,)
+        self.radii, coords = apply_deform_cummax(peak_counts, self.radii_initial, self.N)
+        print("─" * 15,
+              f"max peak: {peak_counts.max():.1f}  |  "
+              f"mean inward: {(self.radii_initial - self.radii).mean():.3f} su",
+              "─" * 15)
+        return peak_counts, coords
+
+    def reset(self, circumference):
+        """Reset coverage and boundary to a new initial circumference."""
+        self._cumulative   = None
+        r0                 = circumference / (2 * np.pi)
+        self.radii_initial = np.full(self.N, r0)
+        self.radii         = np.full(self.N, r0)
+
+
 # ── Main update step ──────────────────────────────────────────────────────────
-def calc_updated_circ(lmp, tracker, threshold, df, fulldf, N_angular_bins=200):
+def calc_updated_circ_cummax(lmp, tracker, df, fulldf, N_angular_bins=200):
+    """
+    One constriction update step using the cumulative-max scheme.
+
+    Instead of a binary threshold + decay, the radius at each x-bin is set to:
+        r[i] = r_initial[i] - max_j(_cumulative[i, j]) * strandwidth_su
+
+    where r_initial is fixed at run start and _cumulative grows monotonically.
+
+    Parameters
+    ----------
+    lmp : lammps instance
+    tracker : CoverageTrackerCumMax
+    df : pd.DataFrame
+        Strand particles only (types 5/9).
+    fulldf : pd.DataFrame
+        All particle types — for x-bin edge determination.
+    N_angular_bins : int
+
+    Returns
+    -------
+    circumference_updated : float
+    xc, yc, r : float
+        Fitted circle center and radius.
+    inwrd : np.ndarray, shape (timesteps, N, N_Y_BINS)
+    peak_counts : np.ndarray, shape (N,)
+        Max cumulative y-bin count per x-bin (used for radial displacement).
+    """
+    inwrd    = calc_inward_deformations(df, fulldf, N=N_angular_bins)
+    inwrd_dT = inwrd.sum(axis=0)
+
+    tracker.update(inwrd_dT)
+    peak_counts, coords = tracker.apply_cummax()
+
+    xc, yc, r = fit_circle(coords)
+    circumference_updated = 2 * np.pi * r
+
+    return circumference_updated, xc, yc, r, inwrd, peak_counts
+
+
     """
     One constriction update step:
       1. Compute per-frame strand histograms over the current time window
