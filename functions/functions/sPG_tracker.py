@@ -11,7 +11,7 @@ import functions as fct
 # │ Raw counts       │ CoverageTrackerRawCounts      │ calc_updated_circ_raw     │
 # │ (original)       │                              │                           │
 # │                  │ r[i] -= sum_j(cumul[i,j])    │ no threshold              │
-# │                  │         * strandwidth_su      │ saves: inwrd, flux        │
+# │                  │         * strandwidth_su      │ saves: inwrd, nr_processive        │
 # ├──────────────────┼──────────────────────────────┼───────────────────────────┤
 # │ Cumulative max   │ CoverageTrackerCumMax         │ calc_updated_circ_cummax  │
 # │                  │                              │                           │
@@ -28,7 +28,7 @@ import functions as fct
 #
 # Raw counts vs cumulative max:
 #   Both are monotonically inward and accumulate history.
-#   Raw counts: shrinkage ∝ total particle flux (sum over y-bins)
+#   Raw counts: shrinkage ∝ total particle nr_processive (sum over y-bins)
 #   Cummax:     shrinkage ∝ peak layer occupancy (max over y-bins)
 #   These are equivalent only if all particles concentrate in one y-bin.
 #
@@ -36,7 +36,7 @@ import functions as fct
 #
 #   # Raw counts (current default):
 #   tracker = pgt.CoverageTrackerRawCounts(N=N_angular_bins, circumference=circumference)
-#   circumference_updated, xc, yc, r, inwrd, flux = \
+#   circumference_updated, xc, yc, r, inwrd, nr_processive = \
 #       pgt.calc_updated_circ_raw(lmp, tracker, df, fulldf, N_angular_bins)
 #   lmp.command(pgt.deform_cmd(circumference_updated / 2))
 #
@@ -597,7 +597,8 @@ def calc_updated_circ(lmp, tracker, threshold, df, fulldf, N_angular_bins=200):
 class CoverageTrackerRawCounts:
     """
     Tracks cumulative strand coverage and drives constriction from total
-    particle flux collapsed over y-bins — the original scheme.
+    particle nr_processive collapsed over y-bins — the original scheme used.
+    We are summing the total nr of processive particles along the long axis for each x-bin
 
     Physical interpretation
     -----------------------
@@ -605,13 +606,13 @@ class CoverageTrackerRawCounts:
                      summed over all y-bins and all calls so far.
 
     At each call, the radius is decremented by:
-        delta_r[i] = flux_dT[i] * strandwidth_su
+        delta_r[i] = nr_processive_dT[i] * strandwidth_su
 
-    where flux_dT[i] = inwrd_dT[i, :].sum() — total new counts this iteration.
+    where nr_processive_dT[i] = inwrd_dT[i, :].sum() — total new counts this iteration.
     Equivalently: r[i] = r_initial - _cumulative[i] * strandwidth_su.
 
-    Shrinkage is proportional to total particle flux, ignoring whether that
-    flux is spread across y-bins or concentrated in one layer.
+    Shrinkage is proportional to total particle nr_processive, ignoring whether that
+    nr_processive is spread across y-bins or concentrated in one layer.
     No threshold, no decay, no consumption.
 
     Uses module global strand_thickness_width.
@@ -626,7 +627,7 @@ class CoverageTrackerRawCounts:
 
     def update_and_apply(self, inwrd_dT):
         """
-        Accumulate new flux and update radii in one step.
+        Accumulate new nr_processive and update radii in one step.
 
         Parameters
         ----------
@@ -635,24 +636,26 @@ class CoverageTrackerRawCounts:
 
         Returns
         -------
-        flux : np.ndarray, shape (N,)
-            Cumulative total flux per x-bin after this update.
+        nr_processive : np.ndarray, shape (N,)
+            Cumulative total nr_processive per x-bin after this update.
         coords : np.ndarray, shape (N, 2)
             Updated boundary coordinates.
         """
         strandwidth_su = strand_thickness_width / NM_PER_SIM_UNIT
         angles         = np.linspace(0, 2 * np.pi, self.N, endpoint=False)
 
-        # Collapse y-bins → total flux this iteration per x-bin
-        self._cumulative += inwrd_dT.sum(axis=1)   # (N,)
+        # Collapse y-bins → total new nr_processive this iteration per x-bin
+        nr_processive_dT           = inwrd_dT.sum(axis=1)   # (N,)
+        self._cumulative += nr_processive_dT
 
-        # Radius = initial - cumulative flux * strandwidth
-        self.radii = np.maximum(0, self.radii_initial - self._cumulative * strandwidth_su)
+        # Incremental: shrink current radii by this iteration's nr_processive only
+        # (allows fitted circle center to drift across iterations)
+        self.radii = np.maximum(0, self.radii - nr_processive_dT * strandwidth_su)
         coords     = np.column_stack((self.radii * np.cos(angles),
                                       self.radii * np.sin(angles)))
 
         print("─" * 15,
-              f"total flux: {self._cumulative.sum():.0f}  |  "
+              f"total nr_processive: {self._cumulative.sum():.0f}  |  "
               f"mean inward: {(self.radii_initial - self.radii).mean():.3f} su",
               "─" * 15)
         return self._cumulative.copy(), coords
@@ -666,11 +669,11 @@ class CoverageTrackerRawCounts:
 
 def calc_updated_circ_raw(lmp, tracker, df, fulldf, N_angular_bins=200):
     """
-    One constriction update step using the raw particle flux scheme.
+    One constriction update step using the raw particle nr_processive scheme.
 
     Shrinkage at each x-bin is proportional to total cumulative particle
     counts collapsed over all y-bins:
-        r[i] = r_initial[i] - cumulative_flux[i] * strandwidth_su
+        r[i] = r_initial[i] - cumulative_nr_processive[i] * strandwidth_su
 
     This replicates the original calc_radii logic within the current structure.
 
@@ -691,15 +694,15 @@ def calc_updated_circ_raw(lmp, tracker, df, fulldf, N_angular_bins=200):
         Fitted circle center and radius.
     inwrd : np.ndarray, shape (timesteps, N, N_Y_BINS)
         Raw per-frame histograms.
-    flux : np.ndarray, shape (N,)
-        Cumulative total particle flux per x-bin up to this iteration.
+    nr_processive : np.ndarray, shape (N,)
+        Cumulative total particle nr_processive per x-bin up to this iteration.
     """
     inwrd    = calc_inward_deformations(df, fulldf, N=N_angular_bins)
     inwrd_dT = inwrd.sum(axis=0)   # (N, N_Y_BINS) — sum over internal timesteps
 
-    flux, coords = tracker.update_and_apply(inwrd_dT)
+    nr_processive, coords = tracker.update_and_apply(inwrd_dT)
 
     xc, yc, r = fit_circle(coords)
     circumference_updated = 2 * np.pi * r
 
-    return circumference_updated, xc, yc, r, inwrd, flux
+    return circumference_updated, xc, yc, r, inwrd, nr_processive
