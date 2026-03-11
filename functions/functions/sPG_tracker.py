@@ -3,6 +3,56 @@ from tqdm import tqdm
 import numpy as np
 import functions as fct
 
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │                     CONSTRICTION SCHEME OVERVIEW                            │
+# ├──────────────────┬──────────────────────────────┬───────────────────────────┤
+# │ Scheme           │ Tracker                      │ Update function           │
+# ├──────────────────┼──────────────────────────────┼───────────────────────────┤
+# │ Raw counts       │ CoverageTrackerRawCounts      │ calc_updated_circ_raw     │
+# │ (original)       │                              │                           │
+# │                  │ r[i] -= sum_j(cumul[i,j])    │ no threshold              │
+# │                  │         * strandwidth_su      │ saves: inwrd, flux        │
+# ├──────────────────┼──────────────────────────────┼───────────────────────────┤
+# │ Cumulative max   │ CoverageTrackerCumMax         │ calc_updated_circ_cummax  │
+# │                  │                              │                           │
+# │                  │ r[i] = r0 - max_j(cumul[i,j])│ no threshold              │
+# │                  │         * strandwidth_su      │ saves: inwrd, peak_counts │
+# ├──────────────────┼──────────────────────────────┼───────────────────────────┤
+# │ Threshold+decay  │ CoverageTracker               │ calc_updated_circ         │
+# │                  │                              │                           │
+# │                  │ deform[i] = breadth > thresh  │ requires: threshold       │
+# │                  │ r[i] -= strandwidth_su        │ saves: inwrd,             │
+# │                  │ cumul[deform] -= 1 (decay)    │        coverage_mask,     │
+# │                  │                              │        deform             │
+# └──────────────────┴──────────────────────────────┴───────────────────────────┘
+#
+# Raw counts vs cumulative max:
+#   Both are monotonically inward and accumulate history.
+#   Raw counts: shrinkage ∝ total particle flux (sum over y-bins)
+#   Cummax:     shrinkage ∝ peak layer occupancy (max over y-bins)
+#   These are equivalent only if all particles concentrate in one y-bin.
+#
+# Usage (main script):
+#
+#   # Raw counts (current default):
+#   tracker = pgt.CoverageTrackerRawCounts(N=N_angular_bins, circumference=circumference)
+#   circumference_updated, xc, yc, r, inwrd, flux = \
+#       pgt.calc_updated_circ_raw(lmp, tracker, df, fulldf, N_angular_bins)
+#   lmp.command(pgt.deform_cmd(circumference_updated / 2))
+#
+#   # Cumulative max:
+#   tracker = pgt.CoverageTrackerCumMax(N=N_angular_bins, circumference=circumference)
+#   circumference_updated, xc, yc, r, inwrd, peak_counts = \
+#       pgt.calc_updated_circ_cummax(lmp, tracker, df, fulldf, N_angular_bins)
+#   lmp.command(pgt.deform_cmd(circumference_updated / 2))
+#
+#   # Threshold + decay:
+#   tracker = pgt.CoverageTracker(N=N_angular_bins, circumference=circumference)
+#   circumference_updated, xc, yc, r, inwrd, coverage_mask, deform = \
+#       pgt.calc_updated_circ(lmp, tracker, threshold, df, fulldf, N_angular_bins)
+#   if deform.any():
+#       lmp.command(pgt.deform_cmd(circumference_updated / 2))
+
 # ── Physical constants & y-binning ───────────────────────────────────────────
 # The z-ring is modeled as having a finite septal thickness.
 # Each strand occupies one bin of width = strand_thickness_width.
@@ -483,6 +533,7 @@ def calc_updated_circ_cummax(lmp, tracker, df, fulldf, N_angular_bins=200):
     return circumference_updated, xc, yc, r, inwrd, peak_counts
 
 
+def calc_updated_circ(lmp, tracker, threshold, df, fulldf, N_angular_bins=200):
     """
     One constriction update step:
       1. Compute per-frame strand histograms over the current time window
@@ -539,3 +590,116 @@ def calc_updated_circ_cummax(lmp, tracker, df, fulldf, N_angular_bins=200):
     circumference_updated = 2 * np.pi * r
 
     return circumference_updated, xc, yc, r, inwrd, coverage_mask, deform
+
+
+# ── Raw-counts tracker (original scheme) ─────────────────────────────────────
+
+class CoverageTrackerRawCounts:
+    """
+    Tracks cumulative strand coverage and drives constriction from total
+    particle flux collapsed over y-bins — the original scheme.
+
+    Physical interpretation
+    -----------------------
+    _cumulative[i] = total strand particles ever observed at x-bin i,
+                     summed over all y-bins and all calls so far.
+
+    At each call, the radius is decremented by:
+        delta_r[i] = flux_dT[i] * strandwidth_su
+
+    where flux_dT[i] = inwrd_dT[i, :].sum() — total new counts this iteration.
+    Equivalently: r[i] = r_initial - _cumulative[i] * strandwidth_su.
+
+    Shrinkage is proportional to total particle flux, ignoring whether that
+    flux is spread across y-bins or concentrated in one layer.
+    No threshold, no decay, no consumption.
+
+    Uses module global strand_thickness_width.
+    """
+
+    def __init__(self, N, circumference):
+        self._cumulative = np.zeros(N)   # (N,) — y already collapsed
+        self.N            = N
+        r0                = circumference / (2 * np.pi)
+        self.radii_initial = np.full(N, r0)
+        self.radii         = np.full(N, r0)
+
+    def update_and_apply(self, inwrd_dT):
+        """
+        Accumulate new flux and update radii in one step.
+
+        Parameters
+        ----------
+        inwrd_dT : np.ndarray, shape (N, N_Y_BINS)
+            Strand counts summed over internal timesteps for this iteration.
+
+        Returns
+        -------
+        flux : np.ndarray, shape (N,)
+            Cumulative total flux per x-bin after this update.
+        coords : np.ndarray, shape (N, 2)
+            Updated boundary coordinates.
+        """
+        strandwidth_su = strand_thickness_width / NM_PER_SIM_UNIT
+        angles         = np.linspace(0, 2 * np.pi, self.N, endpoint=False)
+
+        # Collapse y-bins → total flux this iteration per x-bin
+        self._cumulative += inwrd_dT.sum(axis=1)   # (N,)
+
+        # Radius = initial - cumulative flux * strandwidth
+        self.radii = np.maximum(0, self.radii_initial - self._cumulative * strandwidth_su)
+        coords     = np.column_stack((self.radii * np.cos(angles),
+                                      self.radii * np.sin(angles)))
+
+        print("─" * 15,
+              f"total flux: {self._cumulative.sum():.0f}  |  "
+              f"mean inward: {(self.radii_initial - self.radii).mean():.3f} su",
+              "─" * 15)
+        return self._cumulative.copy(), coords
+
+    def reset(self, circumference):
+        self._cumulative = np.zeros(self.N)
+        r0 = circumference / (2 * np.pi)
+        self.radii_initial = np.full(self.N, r0)
+        self.radii         = np.full(self.N, r0)
+
+
+def calc_updated_circ_raw(lmp, tracker, df, fulldf, N_angular_bins=200):
+    """
+    One constriction update step using the raw particle flux scheme.
+
+    Shrinkage at each x-bin is proportional to total cumulative particle
+    counts collapsed over all y-bins:
+        r[i] = r_initial[i] - cumulative_flux[i] * strandwidth_su
+
+    This replicates the original calc_radii logic within the current structure.
+
+    Parameters
+    ----------
+    lmp : lammps instance
+    tracker : CoverageTrackerRawCounts
+    df : pd.DataFrame
+        Strand particles only (types 5/9).
+    fulldf : pd.DataFrame
+        All particle types — for x-bin edge determination.
+    N_angular_bins : int
+
+    Returns
+    -------
+    circumference_updated : float
+    xc, yc, r : float
+        Fitted circle center and radius.
+    inwrd : np.ndarray, shape (timesteps, N, N_Y_BINS)
+        Raw per-frame histograms.
+    flux : np.ndarray, shape (N,)
+        Cumulative total particle flux per x-bin up to this iteration.
+    """
+    inwrd    = calc_inward_deformations(df, fulldf, N=N_angular_bins)
+    inwrd_dT = inwrd.sum(axis=0)   # (N, N_Y_BINS) — sum over internal timesteps
+
+    flux, coords = tracker.update_and_apply(inwrd_dT)
+
+    xc, yc, r = fit_circle(coords)
+    circumference_updated = 2 * np.pi * r
+
+    return circumference_updated, xc, yc, r, inwrd, flux
