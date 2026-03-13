@@ -23,7 +23,7 @@ def read_xml(c):
 
 
 def df_scatter(df, ax, s=0.5, vmax=None, vmin=None,
-colorby="t_zeroed", cmap="jet"):
+colorby="t_zeroed", cmap="jet", zorder=99):
     df = df.copy()
     df.loc[:, "t_zeroed"] = df["time"] - df.groupby("id")["time"].transform("min")
     sc=ax.scatter(*df[["x", "y"]].values.T,
@@ -31,7 +31,8 @@ colorby="t_zeroed", cmap="jet"):
                           cmap=cmap,
                           vmax=vmax,
                           vmin=vmin,
-                          s=s)
+                          s=s,
+                          zorder=zorder)
     ax.set_aspect("equal")
     return sc
 
@@ -96,3 +97,74 @@ def plot_top_alpha_pids(files, data, MSD_analysis, df_read_fn, N_head=5):
     for _, row in top.iterrows():
         plot_pid(row["file"], row["pid"], data, MSD_analysis, df_read_fn)
 
+def get_msds_for_file(data, xmlfile):
+    return data[data["file"] == xmlfile].groupby("pid")["MSD"].apply(list).to_dict()
+
+def merge_msd_analysis(files, MSD_analysis):
+    merged = {"alpha_values": []}
+    for xmlfile in files:
+        if "ZapA" not in xmlfile:
+            merged["alpha_values"].extend([val for val in MSD_analysis[xmlfile]["alpha"].values()
+                                           if not np.isnan(val)
+                                           ])
+    return merged
+
+from pathlib import Path
+from synthana import analysis, utils
+
+
+def plot_msd_alpha(xmlfile, MSD_analysis, ax, color="steelblue", show_filtered=True):
+# 1. Load Data
+    df = read_xml(xmlfile)
+    
+    # 2. Map Alpha values
+    alpha_series = df["id"].map(MSD_analysis[xmlfile]["alpha"])
+    df["alpha"] = alpha_series
+    
+    # 3. Optional Background Layer
+    if show_filtered:
+        # Filter for IDs that are NOT in the MSD_analysis results
+        df_nan = df[df["alpha"].isna()]
+        ax.scatter(df_nan["x"], df_nan["y"], 
+                   s=0.1, color="lightgrey", alpha=0.2, 
+                   zorder=1, rasterized=True)
+
+    # 4. Foreground: Plot analyzed traces
+    df_valid = df[df["alpha"].notna()]
+    sc = df_scatter(df_valid, ax, s=0.5, colorby="alpha", cmap="viridis", 
+                    vmax=2, vmin=0.8, zorder=2)
+    
+    ax.set_title(Path(xmlfile).stem, fontsize=10)
+    
+    # 4. Create Inset (Lower Right Corner)
+    # [x0, y0, width, height] in normalized axis coordinates
+    ax_ins = ax.inset_axes([0.15, 0.05, 0.2, 0.35])
+    ax_ins.grid(axis="y")
+
+    # 5. Extract alpha values for distribution
+    alpha_values = alpha_series.dropna().unique()
+    
+    # Plot Distribution in Inset
+    if len(alpha_values) > 0:
+        # Violin Plot
+        parts = ax_ins.violinplot([alpha_values], positions=[0], 
+                                  showmedians=False, showextrema=False)
+        for pc in parts["bodies"]:
+            pc.set_facecolor(color)
+            pc.set_alpha(0.3)
+        
+        # Boxplot
+        bp = ax_ins.boxplot([alpha_values], positions=[0], 
+                            widths=0.4, patch_artist=True, 
+                            showfliers=False,
+                            medianprops=dict(color="black", linewidth=1.5))
+        bp['boxes'][0].set_facecolor(color)
+        bp['boxes'][0].set_alpha(0.7)
+    
+    # Clean up inset appearance
+    ax_ins.set_xticks([]) # Hide x-axis ticks
+    ax_ins.set_ylabel(r"$\alpha$", fontsize=8)
+    ax_ins.tick_params(labelsize=7)
+    ax_ins.set_ylim(0.5, 2.5) # Consistent scale for alpha
+    
+    return sc
