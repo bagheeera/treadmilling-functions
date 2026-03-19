@@ -33,6 +33,13 @@ import functions as fct
 # │                  │ r[i] -= strandwidth_su        │ saves: inwrd,             │
 # │                  │ cumul[deform] -= 1 (decay)    │        coverage_mask,     │
 # │                  │                              │        deform             │
+# ├──────────────────┼──────────────────────────────┼───────────────────────────┤
+# │ Symmetric        │ CoverageTrackerSymmetric      │ calc_updated_circ_        │
+# │ (self-consistent)│                              │   symmetric               │
+# │                  │ profile = cumul.mean(axis=0) │ no threshold, no profW    │
+# │                  │ r = r0 - profile.max()       │ saves: inwrd,             │
+# │                  │     * strandwidth_su          │        profile, peak      │
+# │                  │ uniform radius — no circle fit│                           │
 # └──────────────────┴──────────────────────────────┴───────────────────────────┘
 #
 # Usage (main script):
@@ -56,6 +63,12 @@ import functions as fct
 #   tracker = pgt.CoverageTrackerCumMax(N=N_angular_bins, circumference=circumference)
 #   circumference_updated, xc, yc, r, inwrd, peak_counts = \
 #       pgt.calc_updated_circ_cummax(lmp, tracker, df, fulldf, N_angular_bins)
+#   lmp.command(pgt.deform_cmd(circumference_updated / 2))
+#
+#   # Symmetric (self-consistent with post-analysis histograms):
+#   tracker = pgt.CoverageTrackerSymmetric(N=N_angular_bins, circumference=circumference)
+#   circumference_updated, r, inwrd, profile, peak = \
+#       pgt.calc_updated_circ_symmetric(lmp, tracker, df, fulldf, N_angular_bins)
 #   lmp.command(pgt.deform_cmd(circumference_updated / 2))
 #
 #   # Threshold + decay:
@@ -369,3 +382,106 @@ def calc_updated_circ(lmp, tracker, threshold, df, fulldf, N_angular_bins=200):
     deform, coverage_mask, coords = tracker.apply_threshold(threshold)
     xc, yc, r                    = fit_circle(coords)
     return 2 * np.pi * r, xc, yc, r, inwrd, coverage_mask, deform
+
+
+# ── Tracker: symmetric (circumferentially averaged, self-consistent) ──────────
+
+class CoverageTrackerSymmetric:
+    """
+    Drives constriction from the peak of the circumferentially averaged
+    y-profile — guaranteed to be self-consistent with post-analysis histograms.
+
+    Physical interpretation
+    -----------------------
+    _cumulative[i, j] = total strand particles in x-bin i, y-bin j across
+                        all calls so far.
+
+    At each call:
+        profile[j] = _cumulative.mean(axis=0)   # average over x-bins → (N_Y_BINS,)
+        peak       = profile.max()               # peak y-bin occupancy
+        r_new      = r_initial - peak * strandwidth_su
+
+    This gives a single uniform radius for all x-bins, matching exactly what
+    H_total.mean(axis=0).max() * strand_width gives in post-analysis
+    (up to unit conversion: strandwidth_su = strandwidth_nm / NM_PER_SIM_UNIT).
+
+    No circle fitting needed — circumference is set directly from r_new.
+    Assumes circumferential symmetry, which is appropriate when you want to
+    boil constriction down to a single radius value.
+
+    Uses module globals y_edges, strand_thickness_width, NM_PER_SIM_UNIT.
+    """
+
+    def __init__(self, N, circumference):
+        self._cumulative   = None
+        self.N             = N
+        self.r_initial     = circumference / (2 * np.pi)  # scalar — uniform radius
+        self.r             = self.r_initial                # current radius (scalar)
+
+    def update(self, inwrd_dT):
+        """Accumulate new histogram frame. inwrd_dT shape: (N, N_Y_BINS)."""
+        if self._cumulative is None:
+            self._cumulative = np.zeros_like(inwrd_dT)
+        self._cumulative += inwrd_dT
+
+    def apply_symmetric(self):
+        """
+        Update radius from peak of circumferentially averaged y-profile.
+
+        Returns
+        -------
+        r : float
+            Updated radius in simulation units.
+        profile : np.ndarray, shape (N_Y_BINS,)
+            Mean cumulative counts per y-bin across all x-bins.
+        peak : float
+            Peak value of profile — drives radial displacement.
+        """
+        strandwidth_su = strand_thickness_width / NM_PER_SIM_UNIT
+
+        # average over x-bins → (N_Y_BINS,)
+        profile = self._cumulative.mean(axis=0)
+        peak    = profile.max()
+
+        # uniform radius for all x-bins
+        self.r  = max(0.0, self.r_initial - peak * strandwidth_su)
+
+        print("─" * 15,
+              f"profile peak: {peak:.2f}  |  "
+              f"r: {self.r:.3f} su  |  "
+              f"inward: {self.r_initial - self.r:.3f} su",
+              "─" * 15)
+        return self.r, profile, peak
+
+    def reset(self, circumference):
+        self._cumulative = None
+        self.r_initial   = circumference / (2 * np.pi)
+        self.r           = self.r_initial
+
+
+def calc_updated_circ_symmetric(lmp, tracker, df, fulldf, N_angular_bins=200):
+    """
+    Symmetric constriction scheme — self-consistent with post-analysis histograms.
+
+    Radius is set from the peak of the circumferentially averaged y-profile:
+        r = r_initial - cumulative.mean(axis=0).max() * strandwidth_su
+
+    No circle fitting — circumference updated directly from scalar r.
+    Assumes circumferential symmetry.
+
+    Returns
+    -------
+    circumference_updated : float
+    r : float
+        Updated radius in simulation units.
+    inwrd : np.ndarray, shape (timesteps, N, N_Y_BINS)
+    profile : np.ndarray, shape (N_Y_BINS,)
+        Circumferentially averaged cumulative y-profile.
+    peak : float
+        Peak of profile (drives displacement).
+    """
+    inwrd, inwrd_dT    = _base_step(df, fulldf, N_angular_bins)
+    tracker.update(inwrd_dT)
+    r, profile, peak   = tracker.apply_symmetric()
+    circumference_updated = 2 * np.pi * r
+    return circumference_updated, r, inwrd, profile, peak
