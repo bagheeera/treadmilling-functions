@@ -3,15 +3,13 @@ import numpy as np
 from scipy.ndimage import gaussian_filter
 import functions.sPG_tracker as pgt
 
-import pyvista as pv
+
 # import tqdm as tqdm #.notebook as tqdm
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-# For remote/headless use
-pv.start_xvfb()           # virtual framebuffer (avoids X server errors)
-pv.global_theme.jupyter_backend = "trame"  # use web frontend in Jupyter
+
 import functions as fct
 # from functions.common_imports import *
 
@@ -152,7 +150,7 @@ def histogram_mesh(df, fulldf, rundir,
     r_final  = R_nm - H_blurred                  # nm
     x_coords = r_final * np.cos(t_grid)
     y_coords = r_final * np.sin(t_grid)
-    z_coords = z_grid                            # simulation units
+    z_coords = z_grid * NM_PER_SU               # simulation units → nm
 
     if per_interval:
         return t_grid, z_grid, H_total, H_blurred, x_coords, y_coords, z_coords, \
@@ -185,6 +183,10 @@ def render_time_movie(t_grid, z_grid, r_snapshots, t_snapshots, filename, cam_di
     image_scale : int
         Supersampling factor for anti-aliasing.
     """
+    import pyvista as pv
+    # For remote/headless use
+    pv.start_xvfb()           # virtual framebuffer (avoids X server errors)
+    pv.global_theme.jupyter_backend = "trame"  # use web frontend in Jupyter
     n_theta, n_z = t_grid.shape
 
     if select_view == "front":
@@ -264,3 +266,18 @@ def render_time_movie(t_grid, z_grid, r_snapshots, t_snapshots, filename, cam_di
 
     plotter.close()
     print(f"Movie saved to {filename}")
+
+def diam_plot(D, key, ax, modelonly=False, label=None, mdlabel=None):
+    def d_alpha(t, tau_c, alpha,):
+        diam = (1-(t/tau_c)**alpha)**(1/alpha)
+        return diam
+    t_model = np.linspace(0,50, 1000)
+    tau_c = 51
+    alpha = 1.3
+    t, r = np.array(D[key]["t_r"]).T
+    diam_md = r*2*5
+    ax.plot(t/1000/60, diam_md / diam_md[0], lw=3, label=mdlabel)
+    if not modelonly:
+        ax.plot(t_model, d_alpha(t_model, tau_c, alpha),
+            color="k",
+            label=label)
