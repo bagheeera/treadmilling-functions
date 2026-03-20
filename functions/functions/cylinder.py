@@ -4,6 +4,8 @@ from scipy.ndimage import gaussian_filter
 import functions.sPG_tracker as pgt
 
 import pyvista as pv
+# import tqdm as tqdm #.notebook as tqdm
+from tqdm import tqdm
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -160,7 +162,8 @@ def histogram_mesh(df, fulldf, rundir,
 
 def render_time_movie(t_grid, z_grid, r_snapshots, t_snapshots, filename, cam_dict,
                       clip_normal, clip_origin,
-                      image_scale=2):
+                      image_scale=3,
+                      select_view=None):
     """
     Render a movie over time using pre-computed r_snapshots from histogram_mesh
     with per_interval=True.
@@ -184,6 +187,22 @@ def render_time_movie(t_grid, z_grid, r_snapshots, t_snapshots, filename, cam_di
     """
     n_theta, n_z = t_grid.shape
 
+    if select_view == "front":
+        cam_dict = {
+            'position': (-1439.267348837681, 367.91393768244296, 2.6378280610901945),
+            'focal_point': (0.0, 0.0, 0.15),
+            'view_up': (-0.2476655423778592, -0.9687882884811285, -0.010537135307405729)
+        }
+        print("using preset front view")
+    elif select_view == "side":
+        cam_dict = {'position': (-1166.082220657981, -38.3627876539593, 919.7357259921413),
+        'focal_point': (0.0, 0.0, 0.15),
+        'view_up': (-0.011985074051557796, -0.9983110926201956, -0.05684470381178824)
+        }
+        print("using preset side view")
+
+    # print(pv)  # should show <module 'pyvista' ...>
+    # print(pv.Plotter)  # should show the class
     plotter = pv.Plotter(off_screen=True)
     plotter.enable_anti_aliasing('ssaa')
     plotter.camera_position = [
@@ -193,6 +212,7 @@ def render_time_movie(t_grid, z_grid, r_snapshots, t_snapshots, filename, cam_di
     ]
     plotter.image_scale = image_scale
     plotter.open_movie(filename)
+
 
     # precompute faces — fixed topology, only points change each frame
     faces = []
@@ -205,10 +225,11 @@ def render_time_movie(t_grid, z_grid, r_snapshots, t_snapshots, filename, cam_di
             p3 = i * n_z + (j + 1)
             faces.append([4, p0, p1, p2, p3])
     faces = np.hstack(faces)
-
+    # print("starting loop")
     for snap_idx, (r_snap, t) in enumerate(tqdm(zip(r_snapshots, t_snapshots),
                                                 total=len(t_snapshots),
                                                 desc="rendering frames")):
+        # print("rad def")
         # r_snap: (n_theta, n_z) in nm
         x = r_snap * np.cos(t_grid)
         y = r_snap * np.sin(t_grid)
@@ -216,8 +237,9 @@ def render_time_movie(t_grid, z_grid, r_snapshots, t_snapshots, filename, cam_di
 
         points = np.column_stack([x.ravel(), y.ravel(), z.ravel()])
         radial = np.sqrt(x**2 + y**2).ravel()
-
+        # print("mesh def")
         mesh = pv.PolyData(points, faces)
+        
         mesh['radius'] = radial
         mesh['H']      = (r_snapshots[0] - r_snap).ravel()  # deformation relative to first frame
 
@@ -226,12 +248,18 @@ def render_time_movie(t_grid, z_grid, r_snapshots, t_snapshots, filename, cam_di
         if plotter.actors.get('clipped_mesh_actor'):
             plotter.remove_actor('clipped_mesh_actor')
 
+        # print(f"snap {snap_idx}: r_snap range {r_snap.min():.1f}–{r_snap.max():.1f}  "
+        #         f"points={len(points)}  clipped points={clipped.n_points}")
         plotter.add_mesh(clipped,
                          name='clipped_mesh_actor',
                          scalars='radius',
                          cmap='Purples_r',
                          smooth_shading=True,
                          show_scalar_bar=False)
+        plotter.camera.position    = cam_dict['position']
+        plotter.camera.focal_point = cam_dict['focal_point']
+        plotter.camera.up          = cam_dict['view_up']
+        # plotter.render()  # force render before writing frame
         plotter.write_frame()
 
     plotter.close()
