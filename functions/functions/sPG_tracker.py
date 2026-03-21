@@ -1,4 +1,5 @@
 from scipy.optimize import least_squares
+from scipy.interpolate import interp1d
 from tqdm import tqdm
 import numpy as np
 import functions as fct
@@ -132,22 +133,43 @@ def deform_cmd(Lx_half):
 
 
 # ── Inward deformation histogram ─────────────────────────────────────────────
-def calc_inward_deformations(df, fulldf, timesteps=100, N=200):
+def calc_inward_deformations(df, fulldf, timesteps=100, N=200, N_fine=400,
+                             y_edges_override=None):
     """
     Build a 2D particle-count histogram (x × y) for each time frame.
 
-    Returns np.ndarray shape (timesteps, N, N_Y_BINS).
+    Returns np.ndarray shape (timesteps, N_fine, N_Y_BINS).
       axis 0 = time frames
-      axis 1 = x-bins (circumference)
+      axis 1 = x-bins (circumference), interpolated onto fine grid
       axis 2 = y-bins (long axis / strand slots)
 
-    x-bin edges derived from fulldf per frame to track shrinking box.
-    y-bin edges fixed from module global y_edges.
+    Binning strategy
+    ----------------
+    Initial binning uses N bins at the first-frame box width, giving a
+    reference physical bin width. As the box shrinks, n_bins_t decreases
+    to preserve that physical bin width. Each frame's histogram is then
+    interpolated onto a fixed N_fine-bin grid for accumulation, ensuring
+    all frames contribute comparable counts per unit arc length.
+
+    Parameters
+    ----------
+    N : int
+        Initial number of x-bins (sets reference physical bin width). Default 200.
+    N_fine : int
+        Fixed output grid size after interpolation. Default 400.
+    y_edges_override : np.ndarray, optional
+        Custom y-bin edges in simulation units. If None, uses pgt.y_edges.
+        Pass custom edges for extended z-range in mesh analysis.
     """
-    t_steps = np.linspace(df["time"].min(), df["time"].max(), timesteps)
-    delta_t = np.diff(t_steps)[0]
-    n_ybins = len(y_edges) - 1
+    _y_edges = y_edges_override if y_edges_override is not None else y_edges
+    t_steps  = np.linspace(df["time"].min(), df["time"].max(), timesteps)
+    delta_t  = np.diff(t_steps)[0]
+    n_ybins  = len(_y_edges) - 1
     inward_deformations = []
+
+    # reference bin width — set from first valid frame
+    bin_width_0   = None
+    t_centers_out = np.linspace(0, 2 * np.pi, N_fine, endpoint=False)
 
     print("─" * 15, "calculating deformations for times",
           df["time"].min(), "–", df["time"].max(), "─" * 15)
@@ -155,17 +177,40 @@ def calc_inward_deformations(df, fulldf, timesteps=100, N=200):
     for t in tqdm(t_steps, leave=False):
         dft_full = fulldf[(fulldf["time"] >= t - delta_t) & (fulldf["time"] < t)]
         if len(dft_full) == 0:
-            inward_deformations.append(np.zeros((N, n_ybins)))
+            inward_deformations.append(np.zeros((N_fine, n_ybins)))
             continue
-        xbins = np.linspace(dft_full["x"].min(), dft_full["x"].max(), N + 1)
-        df_t  = df[(df["time"] >= t - delta_t) & (df["time"] < t)]
-        if len(df_t) == 0:
-            inward_deformations.append(np.zeros((N, n_ybins)))
-            continue
-        H, _, _ = np.histogram2d(df_t["x"], df_t["y"], bins=[xbins, y_edges])
-        inward_deformations.append(H)
 
-    return np.array(inward_deformations)  # (timesteps, N, n_ybins)
+        x_min_t     = dft_full["x"].min()
+        x_max_t     = dft_full["x"].max()
+        box_width_t = x_max_t - x_min_t
+
+        # set reference bin width from first valid frame
+        if bin_width_0 is None:
+            bin_width_0 = box_width_t / N
+
+        # dynamic bin count: preserve physical bin width as box shrinks
+        n_bins_t    = max(2, int(box_width_t / bin_width_0))
+        t_centers_t = np.linspace(0, 2 * np.pi, n_bins_t, endpoint=False)
+
+        df_t = df[(df["time"] >= t - delta_t) & (df["time"] < t)]
+        if len(df_t) == 0:
+            inward_deformations.append(np.zeros((N_fine, n_ybins)))
+            continue
+
+        # map x → theta for this frame
+        data_theta = ((df_t["x"].values - x_min_t) / box_width_t) * 2 * np.pi
+        H_t, _, _  = np.histogram2d(data_theta, df_t["y"].values,
+                                    bins=[np.linspace(0, 2*np.pi, n_bins_t+1), _y_edges])
+
+        # interpolate onto fine fixed grid (linear on bin centers)
+        if n_bins_t != N_fine:
+            f   = interp1d(t_centers_t, H_t, axis=0, kind='linear',
+                           bounds_error=False, fill_value=0.0)
+            H_t = f(t_centers_out)
+
+        inward_deformations.append(H_t)
+
+    return np.array(inward_deformations)  # (timesteps, N_fine, n_ybins)
 
 
 # ── Boundary deformation (threshold scheme only) ─────────────────────────────
