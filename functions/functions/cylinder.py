@@ -15,6 +15,13 @@ import functions as fct
 
 
 
+import json
+import numpy as np
+from scipy.ndimage import gaussian_filter
+import functions.sPG_tracker as pgt
+from functions.sPG_tracker import calc_inward_deformations
+
+
 def histogram_mesh(df, fulldf, rundir,
                    z_range_tuple=(-150, 150),
                    blur_nm=(20.0, 5.0),
@@ -76,72 +83,64 @@ def histogram_mesh(df, fulldf, rundir,
     circumference_su = 2 * d["Lx"]               # full box in sim units
     R_nm             = NM_PER_SU * circumference_su / (2 * np.pi)  # run-start radius in nm
 
-    # ── Bin geometry from pgt globals ────────────────────────────────────────
-    # strand_thickness_width: bin size in nm (set by pgt.set_septal_bins)
-    # z-bins: fixed edges spaced at strand_width from z_range_tuple
+    # ── Bin geometry ─────────────────────────────────────────────────────────
     strand_width_nm = pgt.strand_thickness_width          # nm
     strand_width_su = strand_width_nm / NM_PER_SU         # simulation units
-
-    z_min, z_max = z_range_tuple
-    z_edges = np.arange(z_min, z_max + strand_width_su, strand_width_su)  # sim units
-    n_z     = len(z_edges) - 1
-    z_centers = (z_edges[:-1] + z_edges[1:]) / 2         # bin centers in sim units
-
-    # theta: fixed 200 bins to match peakweighted tracker scheme
     circumference_nm = NM_PER_SU * circumference_su
-    n_theta   = 200
-    t_edges   = np.linspace(0, 2 * np.pi, n_theta + 1)
-    t_centers = (t_edges[:-1] + t_edges[1:]) / 2
 
+    # z-bins: spaced at strand_width, custom range for mesh visualization
+    z_min, z_max = z_range_tuple
+    z_edges_mesh = np.arange(z_min, z_max + strand_width_su, strand_width_su)
+    n_z          = len(z_edges_mesh) - 1
+    z_centers    = (z_edges_mesh[:-1] + z_edges_mesh[1:]) / 2
+
+    # theta: N_fine=400 fixed grid, same as calc_inward_deformations default
+    n_theta      = 400
+    t_centers    = np.linspace(0, 2 * np.pi, n_theta, endpoint=False)
     t_grid, z_grid = np.meshgrid(t_centers, z_centers, indexing='ij')
-    H_total        = np.zeros((n_theta, n_z))
 
-    # ── Gaussian blur pixel sigmas — computed once before the loop ────────────
-    # theta bin spacing in nm: arc_length / n_theta
+    # ── Gaussian blur pixel sigmas ────────────────────────────────────────────
     theta_bin_nm   = circumference_nm / n_theta
-    z_bin_nm       = strand_width_nm               # z bins spaced at strand_width
+    z_bin_nm       = strand_width_nm
     sigma_theta_nm, sigma_z_nm = blur_nm
     sigma_theta_px = sigma_theta_nm / theta_bin_nm
     sigma_z_px     = sigma_z_nm     / z_bin_nm
 
-    # ── Accumulate histogram over dT intervals ────────────────────────────────
+    # ── Accumulate histograms via calc_inward_deformations ────────────────────
+    # Split df into dT intervals and call calc_inward_deformations per interval,
+    # passing z_edges_mesh as y_edges_override for extended z-range.
+    # Each call returns shape (timesteps=1, N_fine, n_z) which we sum into H_total.
     t_min  = df["time"].min()
     t_max  = df["time"].max()
     t_bins = np.arange(t_min, t_max + dT, dT)
 
+    H_total     = np.zeros((n_theta, n_z))
     r_snapshots = []
     t_snapshots = []
 
     for t0, t1 in zip(t_bins[:-1], t_bins[1:]):
-        full_i = fulldf[(fulldf["time"] >= t0) & (fulldf["time"] < t1)]
-        if len(full_i) == 0:
-            continue
-        x_min = full_i["x"].min()
-        x_max = full_i["x"].max()
-
-        df_i = df[(df["time"] >= t0) & (df["time"] < t1)]
-        if len(df_i) == 0:
+        df_i     = df[(df["time"] >= t0) & (df["time"] < t1)]
+        full_i   = fulldf[(fulldf["time"] >= t0) & (fulldf["time"] < t1)]
+        if len(df_i) == 0 or len(full_i) == 0:
             continue
 
-        # map x → theta using this interval's box extent
-        data_theta = ((df_i["x"].values - x_min) / (x_max - x_min)) * 2 * np.pi
-        data_z     = df_i["y"].values   # simulation units
+        # one dT interval: timesteps=1 gives shape (1, N_fine, n_z)
+        H_interval = calc_inward_deformations(
+            df_i, full_i, timesteps=1, N=200, N_fine=n_theta,
+            y_edges_override=z_edges_mesh
+        )
+        H_total += H_interval.sum(axis=0)   # (N_fine, n_z)
 
-        H, _, _ = np.histogram2d(data_theta, data_z, bins=[t_edges, z_edges])
-        H_total += H
-
-        # snapshot r_final after each interval if requested
         if per_interval:
-            H_s = gaussian_filter(H_total * strand_width_nm,
-                                  sigma=(sigma_theta_px, sigma_z_px),
-                                  mode=('wrap', 'reflect'))
+            H_s    = gaussian_filter(H_total * strand_width_nm,
+                                     sigma=(sigma_theta_px, sigma_z_px),
+                                     mode=('wrap', 'reflect'))
             r_snap = R_nm - H_s
             r_snapshots.append(r_snap.copy())
             t_snapshots.append(t1)
 
-    # ── Scale: each count = one strandwidth of radial displacement ────────────
+    # ── Scale and blur ────────────────────────────────────────────────────────
     H_scaled  = H_total * strand_width_nm   # nm
-
     H_blurred = gaussian_filter(H_scaled,
                                 sigma=(sigma_theta_px, sigma_z_px),
                                 mode=('wrap', 'reflect'))
@@ -156,7 +155,6 @@ def histogram_mesh(df, fulldf, rundir,
         return t_grid, z_grid, H_total, H_blurred, x_coords, y_coords, z_coords, \
                np.array(t_snapshots), np.array(r_snapshots)
     return t_grid, z_grid, H_total, H_blurred, x_coords, y_coords, z_coords
-
 
 def render_time_movie(t_grid, z_grid, r_snapshots, t_snapshots, filename, cam_dict,
                       clip_normal, clip_origin,
