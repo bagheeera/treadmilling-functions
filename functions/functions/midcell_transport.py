@@ -545,63 +545,80 @@ def orientation_plot(ax, x_minmax, y_minmax, d_x_mean, d_y_mean, x_edges, y_edge
     return ax
 
 
-def windowed_filament_age_hist(ax, key, D, t_min, t_max, label=None,
-                               color="orangered", as_density=False,
-                               ylabel="Long cell axis (nm)"):
-    # Select times in window
-    times = [t for t in sorted(D[key]["filament_age_profiles"].keys())
-             if t_min <= t <= t_max]
 
-    if len(times) == 0:
-        return  # No data in this window
+def plot_filament_age_hist(ax, processed_data, label=None, 
+                           color="orangered", ylabel="Long cell axis (nm)"):
+    """
+    Plots the pre-processed mean profile and shaded error bars.
+    ###
+    Usage:
+    profile_data = get_averaged_age_profile(
+        D[key]["filament_age_profiles"], 
+        t_min=10, 
+        t_max=50, 
+        as_density=True
+    )
+
+    plot_filament_age_hist(ax, profile_data, label="Filament A", color="blue")
+    """
+    if processed_data is None:
+        return
     
-    # Collect all (possibly normalized) mean values in the time window
+    y_vals = processed_data["y_bins"]
+    mu = processed_data["mean"]
+    sigma = processed_data["std"]
+
+    # Plot the mean line
+    line, = ax.plot(mu, y_vals, lw=2, label=label, color=color)
+    
+    # Shaded area for ±1 STD
+    ax.fill_betweenx(
+        y_vals,
+        mu - sigma,
+        mu + sigma,
+        color=line.get_color(),
+        alpha=0.3,
+    )
+    
+    if ylabel:
+        ax.set_ylabel(ylabel)
+
+def get_averaged_age_profile(age_profiles, t_min, t_max, as_density=False):
+    """
+    Filters age profiles by time and computes the mean and std across the window.
+    """
+    # Select times in window
+    times = [t for t in sorted(age_profiles.keys()) if t_min <= t <= t_max]
+
+    if not times:
+        return None
+    
     mean_list = []
     y_bins = None
+    
     for t in times:
-        dft = D[key]["filament_age_profiles"][t]
+        dft = age_profiles[t]
         values = dft["mean"].values.copy()
         
         if as_density:
-            bin_width = np.diff(dft["y_bin_center"].values).mean()  # approximate
-            values = values / (np.nansum(values) * bin_width)
+            # Calculate bin width for density normalization
+            bin_width = np.diff(dft["y_bin_center"].values).mean()
+            total = np.nansum(values)
+            if total > 0:
+                values = values / (total * bin_width)
         
         mean_list.append(values)
         
         if y_bins is None:
             y_bins = dft["y_bin_center"].values
     
-    # Convert to array for nanmean/nanstd
+    # Compute stats
     mean_array = np.array(mean_list)
-    
-    # Compute mean and std over time window
-    mean_over_window = np.nanmean(mean_array, axis=0)
-    std_over_window = np.nanstd(mean_array, axis=0)
-    
-    # Scale y_bins if needed
-    y_bins_scaled = 5 * np.array(y_bins)
-    
-    # Plot horizontal line
-    p = ax.plot(mean_over_window, y_bins_scaled, lw=2, label=label,
-    color=color)
-    
-    # Add shaded area for ±1 STD
-    ax.fill_betweenx(
-        y_bins_scaled,
-        mean_over_window - std_over_window,
-        mean_over_window + std_over_window,
-        color=p[0].get_color(),
-        alpha=0.3,
-    )
-    
-    # Labels
-    if ylabel is not None:
-        ax.set_ylabel(ylabel)
-    
-    # if as_density:
-    #     ax.set_xlabel(f"Filament age probability density ({t_min}-{t_max}s)")
-    # else:
-    #     ax.set_xlabel(f"Mean filament age\n({t_min}-{t_max}s)")
+    return {
+        "mean": np.nanmean(mean_array, axis=0),
+        "std": np.nanstd(mean_array, axis=0),
+        "y_bins": 5 * np.array(y_bins)  # Applying the 5x scaling here
+    }
 
 
 import pandas as pd
