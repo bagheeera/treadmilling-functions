@@ -124,10 +124,12 @@ def histogram_mesh(df, fulldf, rundir,
         if len(df_i) == 0 or len(full_i) == 0:
             continue
 
+        # print(len(df_i), len(full_i))
         # one dT interval: timesteps=1 gives shape (1, N_fine, n_z)
         H_interval = calc_inward_deformations(
-            df_i, full_i, timesteps=1, N=200, N_fine=n_theta,
-            y_edges_override=z_edges_mesh
+            df_i, full_i, timesteps=10, N=200, N_fine=n_theta,
+            y_edges_override=z_edges_mesh,
+            verbose=False
         )
         H_total += H_interval.sum(axis=0)   # (N_fine, n_z)
 
@@ -156,63 +158,66 @@ def histogram_mesh(df, fulldf, rundir,
                np.array(t_snapshots), np.array(r_snapshots)
     return t_grid, z_grid, H_total, H_blurred, x_coords, y_coords, z_coords
 
+import numpy as np
+from tqdm import tqdm
+
+
 def render_time_movie(t_grid, z_grid, r_snapshots, t_snapshots, filename, cam_dict,
                       clip_normal, clip_origin,
                       image_scale=3,
                       select_view=None):
     """
     Render a movie over time using pre-computed r_snapshots from histogram_mesh
-    with per_interval=True.
+    with per_interval=True. Compatible with both interactive Jupyter and
+    headless SLURM/papermill execution.
 
     Parameters
     ----------
     t_grid, z_grid : np.ndarray, shape (n_theta, n_z)
         Grid coordinates from histogram_mesh.
+        z_grid in simulation units — converted to nm internally.
     r_snapshots : np.ndarray, shape (n_intervals, n_theta, n_z)
         Radius at each interval in nm.
     t_snapshots : np.ndarray, shape (n_intervals,)
         Simulation time at each interval.
     filename : str
-        Output movie filename.
+        Output movie filename (.mp4).
     cam_dict : dict
         Keys: position, focal_point, view_up.
+        Ignored if select_view is set.
     clip_normal, clip_origin : array-like
         Clipping plane normal and origin for cross-section view.
+        Should be in nm to match r_snapshots units.
     image_scale : int
-        Supersampling factor for anti-aliasing.
+        Supersampling factor for anti-aliasing. Default 3.
+    select_view : str or None
+        Preset camera view. Options: 'front', 'side', or None to use cam_dict.
     """
     import pyvista as pv
-    # For remote/headless use
-    pv.start_xvfb()           # virtual framebuffer (avoids X server errors)
-    pv.global_theme.jupyter_backend = "trame"  # use web frontend in Jupyter
-    n_theta, n_z = t_grid.shape
 
+    # headless display setup — safe to call in both interactive and SLURM environments
+    pv.start_xvfb()
+
+    # preset camera views
     if select_view == "front":
         cam_dict = {
-            'position': (-1439.267348837681, 367.91393768244296, 2.6378280610901945),
+            'position':    (-1439.267348837681, 367.91393768244296, 2.6378280610901945),
             'focal_point': (0.0, 0.0, 0.15),
-            'view_up': (-0.2476655423778592, -0.9687882884811285, -0.010537135307405729)
+            'view_up':     (-0.2476655423778592, -0.9687882884811285, -0.010537135307405729)
         }
         print("using preset front view")
     elif select_view == "side":
-        cam_dict = {'position': (-1166.082220657981, -38.3627876539593, 919.7357259921413),
-        'focal_point': (0.0, 0.0, 0.15),
-        'view_up': (-0.011985074051557796, -0.9983110926201956, -0.05684470381178824)
+        cam_dict = {
+            'position':    (-1166.082220657981, -38.3627876539593, 919.7357259921413),
+            'focal_point': (0.0, 0.0, 0.15),
+            'view_up':     (-0.011985074051557796, -0.9983110926201956, -0.05684470381178824)
         }
         print("using preset side view")
 
-    # print(pv)  # should show <module 'pyvista' ...>
-    # print(pv.Plotter)  # should show the class
-    plotter = pv.Plotter(off_screen=True)
-    plotter.enable_anti_aliasing('ssaa')
-    plotter.camera_position = [
-        cam_dict['position'],
-        cam_dict['focal_point'],
-        cam_dict['view_up']
-    ]
-    plotter.image_scale = image_scale
-    plotter.open_movie(filename)
+    n_theta, n_z = t_grid.shape
 
+    # z_grid is in simulation units — convert to nm to match x, y (in nm)
+    z_nm = z_grid * 5.0
 
     # precompute faces — fixed topology, only points change each frame
     faces = []
@@ -225,47 +230,50 @@ def render_time_movie(t_grid, z_grid, r_snapshots, t_snapshots, filename, cam_di
             p3 = i * n_z + (j + 1)
             faces.append([4, p0, p1, p2, p3])
     faces = np.hstack(faces)
-    # print("starting loop")
-    for snap_idx, (r_snap, t) in enumerate(tqdm(zip(r_snapshots, t_snapshots),
-                                                total=len(t_snapshots),
-                                                desc="rendering frames")):
-        # print("rad def")
+
+    # always off_screen for movie rendering — works in both environments
+    plotter = pv.Plotter(off_screen=True)
+    plotter.enable_anti_aliasing('ssaa')
+    plotter.image_scale = image_scale
+    plotter.open_movie(filename)
+
+    for r_snap, t in tqdm(zip(r_snapshots, t_snapshots),
+                          total=len(t_snapshots),
+                          desc="rendering frames"):
         # r_snap: (n_theta, n_z) in nm
         x = r_snap * np.cos(t_grid)
         y = r_snap * np.sin(t_grid)
-        z = z_grid  # simulation units
 
-        points = np.column_stack([x.ravel(), y.ravel(), z.ravel()])
+        points = np.column_stack([x.ravel(), y.ravel(), z_nm.ravel()])
         radial = np.sqrt(x**2 + y**2).ravel()
-        # print("mesh def")
-        mesh = pv.PolyData(points, faces)
-        
-        mesh['radius'] = radial
-        mesh['H']      = (r_snapshots[0] - r_snap).ravel()  # deformation relative to first frame
+
+        mesh            = pv.PolyData(points, faces)
+        mesh['radius']  = radial
+        mesh['H']       = (r_snapshots[0] - r_snap).ravel()  # deformation from first frame
 
         clipped = mesh.clip(normal=clip_normal, origin=clip_origin, invert=False)
 
         if plotter.actors.get('clipped_mesh_actor'):
             plotter.remove_actor('clipped_mesh_actor')
 
-        # print(f"snap {snap_idx}: r_snap range {r_snap.min():.1f}–{r_snap.max():.1f}  "
-        #         f"points={len(points)}  clipped points={clipped.n_points}")
         plotter.add_mesh(clipped,
                          name='clipped_mesh_actor',
                          scalars='radius',
                          cmap='Purples_r',
                          smooth_shading=True,
                          show_scalar_bar=False)
+
+        # set camera per-frame to prevent pyvista auto-resetting it
         plotter.camera.position    = cam_dict['position']
         plotter.camera.focal_point = cam_dict['focal_point']
         plotter.camera.up          = cam_dict['view_up']
-        # plotter.render()  # force render before writing frame
+
         plotter.write_frame()
 
     plotter.close()
     print(f"Movie saved to {filename}")
 
-def diam_plot(D, key, ax, modelonly=False, label=None, mdlabel=None):
+def diam_plot(D, key, ax, modelonly=False, label=None, mdlabel=None, coltharp_color="k", mdcolor=None):
     def d_alpha(t, tau_c, alpha,):
         diam = (1-(t/tau_c)**alpha)**(1/alpha)
         return diam
@@ -274,8 +282,8 @@ def diam_plot(D, key, ax, modelonly=False, label=None, mdlabel=None):
     alpha = 1.3
     t, r = np.array(D[key]["t_r"]).T
     diam_md = r*2*5
-    ax.plot(t/1000/60, diam_md / diam_md[0], lw=3, label=mdlabel)
+    ax.plot(t/1000/60, diam_md / diam_md[0], lw=3, label=mdlabel, color=mdcolor)
     if not modelonly:
         ax.plot(t_model, d_alpha(t_model, tau_c, alpha),
-            color="k",
+            color=coltharp_color,
             label=label)
