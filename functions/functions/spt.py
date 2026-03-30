@@ -27,7 +27,8 @@ import matplotlib.colors as mcolors
 
 def df_scatter(df, ax, s=0.5, vmax=None, vmin=None,
                colorby="t_zeroed", cmap="jet", zorder=99,
-               useplot=False, separate_cmap=False):
+               useplot=False, separate_cmap=False,
+               plotalpha=0.5, plotlw=0.5):
     
     df = df.copy()
     # Ensure t_zeroed exists for coloring if requested
@@ -57,7 +58,7 @@ def df_scatter(df, ax, s=0.5, vmax=None, vmin=None,
             # 1. Plot the continuous line (using a single color or basic plot)
             # Note: standard ax.plot doesn't support multicolored segments easily.
             # We plot the line in a light grey or the first color to show connectivity.
-            ax.plot(points[:, 0], points[:, 1], color='gray', alpha=0.3, linewidth=0.5, zorder=zorder-1)
+            ax.plot(points[:, 0], points[:, 1], color='gray', alpha=plotalpha, linewidth=plotlw, zorder=zorder-1)
             
             # 2. Overlay the scatter points for the gradient effect
             sc = ax.scatter(points[:, 0], points[:, 1],

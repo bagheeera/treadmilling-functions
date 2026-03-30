@@ -9,7 +9,8 @@ def plot_data_(prm_sets, D, grid_params, overlay_params, plot_function, check_ke
               sharex=True, sharey=True, renamedict=None,
               return_fig=False,
               print_keys=False,
-              xlabelpad=0):
+              xlabelpad=0,
+              legendtitle=None):
     """
     Generates a grid of subplots for each combination of parameters in `figure_params`,
     using `grid_params` to define the subplot layout and optionally overlaying data
@@ -132,6 +133,8 @@ def plot_data_(prm_sets, D, grid_params, overlay_params, plot_function, check_ke
                         if print_keys:
                             print(key_tuple)
                         plot_function(key_tuple, subplot_ax, overlay)
+                    else:
+                        subplot_ax.axis("off")
                 if renamedict:
                     column_label = renamedict.get(grid_params[0], grid_params[0])
                     row_label = renamedict.get(grid_params[1], grid_params[1])
@@ -174,7 +177,7 @@ def plot_data_(prm_sets, D, grid_params, overlay_params, plot_function, check_ke
         ax = plt.gca()
         handles, labels = ax.get_legend_handles_labels()
         if labels:
-            ax.legend()
+            ax.legend(title=legendtitle)
 
         fig.tight_layout()
         if return_fig:
@@ -463,7 +466,8 @@ def create_footer(custompath=None):
     footer_text = f"{full_path} | {timestamp}"
     return footer_text
 
-def save_fig(fig, name, sources, notes="", footersize=4, notebook_name=""):
+def save_fig(fig, name, sources, notes="", footersize=4, notebook_name="",
+             result_folderpath="../results"):
     """
     Save a matplotlib figure with organized metadata and a descriptive footer.
 
@@ -493,7 +497,7 @@ def save_fig(fig, name, sources, notes="", footersize=4, notebook_name=""):
              fontsize=footersize, alpha=0.6)
 
     # Create folder for figure
-    out = Path("../results") / name
+    out = Path(result_folderpath) / name
     out.mkdir(parents=True, exist_ok=True)
 
     # Save figure with descriptive filenames

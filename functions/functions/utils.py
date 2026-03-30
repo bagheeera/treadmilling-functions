@@ -666,7 +666,7 @@ mamba activate {env}
 
 
 
-def submit_papermill(job_name, ipynb_file, storeoutput, rundirs_file, ram_gb=30, ncores=1, time_hours=30, envname="filaments", extra_args=""):
+def submit_papermill(job_name, ipynb_file, storeoutput, rundirs_file, ram_gb=5, ncores=1, time_hours=30, envname="filaments", extra_args=""):
     """
     Generates a SLURM submission script and submits a batch job to run a Jupyter notebook via papermill.
 
@@ -765,7 +765,7 @@ srun papermill {ipynb_file} {storeoutput}/{ipynb_basename}_${{SLURM_ARRAY_TASK_I
 import os
 import subprocess
 
-def submit_python(job_name, py_file, rundirs_file, ram_gb=30, ncores=1, time_hours=30, envname="filaments", extra_args=None):
+def submit_python(job_name, py_file, rundirs_file, ram_gb=5, ncores=1, time_hours=30, envname="filaments", extra_args=None):
     """
     Generates a SLURM submission script and submits a batch job to run a Python script via srun.
 

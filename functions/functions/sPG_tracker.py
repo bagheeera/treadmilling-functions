@@ -134,7 +134,7 @@ def deform_cmd(Lx_half):
 
 # ── Inward deformation histogram ─────────────────────────────────────────────
 def calc_inward_deformations(df, fulldf, timesteps=100, N=200, N_fine=400,
-                             y_edges_override=None):
+                             y_edges_override=None, verbose=True):
     """
     Build a 2D particle-count histogram (x × y) for each time frame.
 
@@ -163,6 +163,7 @@ def calc_inward_deformations(df, fulldf, timesteps=100, N=200, N_fine=400,
     """
     _y_edges = y_edges_override if y_edges_override is not None else y_edges
     t_steps  = np.linspace(df["time"].min(), df["time"].max(), timesteps)
+    # print("t_steps",  t_steps, "min/max", df["time"].min(), df["time"].max())
     delta_t  = np.diff(t_steps)[0]
     n_ybins  = len(_y_edges) - 1
     inward_deformations = []
@@ -171,8 +172,9 @@ def calc_inward_deformations(df, fulldf, timesteps=100, N=200, N_fine=400,
     bin_width_0   = None
     t_centers_out = np.linspace(0, 2 * np.pi, N_fine, endpoint=False)
 
-    print("─" * 15, "calculating deformations for times",
-          df["time"].min(), "–", df["time"].max(), "─" * 15)
+    if verbose:
+        print("─" * 15, "calculating deformations for times",
+            df["time"].min(), "–", df["time"].max(), "─" * 15)
 
     for t in tqdm(t_steps, leave=False):
         dft_full = fulldf[(fulldf["time"] >= t - delta_t) & (fulldf["time"] < t)]

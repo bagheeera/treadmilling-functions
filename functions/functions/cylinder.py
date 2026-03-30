@@ -162,6 +162,10 @@ import numpy as np
 from tqdm import tqdm
 
 
+import numpy as np
+from tqdm import tqdm
+
+
 def render_time_movie(t_grid, z_grid, r_snapshots, t_snapshots, filename, cam_dict,
                       clip_normal, clip_origin,
                       image_scale=3,
@@ -195,8 +199,11 @@ def render_time_movie(t_grid, z_grid, r_snapshots, t_snapshots, filename, cam_di
     """
     import pyvista as pv
 
-    # headless display setup — safe to call in both interactive and SLURM environments
+    # start virtual X display before creating plotter — prevents VTK from
+    # falling back to EGL (which fails on CPU-only SLURM nodes).
+    # safe to call even when a real display exists.
     pv.start_xvfb()
+    pv.global_theme.jupyter_backend = "static" 
 
     # preset camera views
     if select_view == "front":

@@ -369,15 +369,27 @@ def plot_fract_in_box(
     # ax.fill_between(x, mean_fract - std_fract, mean_fract + std_fract, alpha=0.3)
     ax.legend()
 
-def deathplot(D, key, ax, xycut=80, vmax=None, drop_before=0):
-    deaths = D[key]["final_positions_lt_5"].copy()
-    deaths.loc[:, "x"] = deaths["x"] * 5
-    deaths.loc[:, "y"] = deaths["y"] * 5
+def deathplot(D, key, ax, xycut=80, vmax=None, drop_before=0, n_bins=50, cmap="viridis",
+              to_nm=True,
+              drop_after=None,
+              override_df=None):
+    
+    ## optionally plot different quantity
+    if override_df is not None:
+        deaths = override_df.copy()
+    else:
+        deaths = D[key]["final_positions_lt_5"].copy()
+    if to_nm:
+        deaths.loc[:, "x"] = deaths["x"] * 5
+        deaths.loc[:, "y"] = deaths["y"] * 5
     deaths = deaths[deaths["time"] >= drop_before]
+    if drop_after is not None:
+        deaths = deaths[deaths["time"] <= drop_after]
     deaths = deaths[(deaths["x"].between(-xycut, xycut))
                     & (deaths["y"].between(-xycut, xycut))
                     ]
-    h = ax.hist2d(*deaths[["x", "y"]].values.T, bins=50, vmax=vmax)
+    h = ax.hist2d(*deaths[["x", "y"]].values.T, bins=n_bins, vmax=vmax,
+                  cmap=cmap)
     return h
 
 

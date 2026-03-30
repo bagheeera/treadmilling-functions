@@ -122,110 +122,95 @@ def check_min_distance(new_x, new_y, atom_table, min_dist):
             return False
     return True
 
-def generate_configuration(Lx, n_synthases, run_dir, add_grid=True, initial_synth_ptype=6, zpos=0.5, 
-                           mZ=1, m_process=1, min_dist=1.3, sidelength=8, m_diffu=1, m_t6=1, 
-                          yboxsize=None, n_atomtypes_=None, zboxsize=None,
-                          n_activating=0,
-                           activating_initial_yrange=30,
-                           activating_particle_type=8,
-                           grid_particle_type=7,
-                           zlim=4.25,
-                           _3Ddiviplacement=False,
-                           Lz_ini_low=0,
-                           Lz_ini_high=0,
-                           check_distance=True,
-                           n_bondtypes=1,
-                           massdict=None
-                          ):
-    """Generate the configuration file and save it to the given directory."""
-    import math
+def generate_atom_table(Lx, n_synthases, add_grid=True, initial_synth_ptype=6, zpos=0.5,
+                        m_process=1, min_dist=1.3, sidelength=8, m_t6=1,
+                        n_activating=0, activating_initial_yrange=30,
+                        activating_particle_type=8, grid_particle_type=7,
+                        _3Ddiviplacement=False, Lz_ini_low=0, Lz_ini_high=0,
+                        check_distance=True, mZ=1):
+    """Generate and return the atom table (list of atom entries)."""
     MIN_COORD = -Lx
     MAX_COORD = Lx
+
+    triangular_grid = generate_triangular_grid(MIN_COORD, MAX_COORD, sidelength)
+
+    atom_table = [
+        [1, 9, 4, 0.0, -0.5, -2.0],
+        [2, 9, 4, 0.0,  0.5, -2.0],
+    ]
+
+    for i in range(len(atom_table) + 1, n_synthases + len(atom_table) + 1):
+        while True:
+            new_x = round(random.uniform(-Lx, Lx), 2)
+            new_y = round(random.uniform(-Lx, Lx), 2)
+            new_z = round(random.uniform(Lz_ini_low + 1, Lz_ini_high - 1), 2) if _3Ddiviplacement else zpos
+            if not check_distance or check_min_distance(new_x, new_y, atom_table, min_dist):
+                atom_table.append([i, i, initial_synth_ptype, new_x, new_y, new_z])
+                break
+
+    if n_activating:
+        for i in range(len(atom_table) + 1, n_activating + len(atom_table) + 1):
+            atom_table.append([i, i, activating_particle_type,
+                                round(random.uniform(-Lx, Lx), 2),
+                                round(random.uniform(-activating_initial_yrange, activating_initial_yrange), 2),
+                                zpos])
+
+    if add_grid:
+        print("grid entries:", len(triangular_grid))
+        for coord in triangular_grid:
+            atom_table.append([atom_table[-1][0] + 1, atom_table[-1][1] + 1,
+                                grid_particle_type, coord[0], coord[1], zpos])
+
+    return atom_table
+
+
+def generate_configuration(Lx, n_synthases, run_dir, add_grid=True, initial_synth_ptype=6, zpos=0.5,
+                           mZ=1, m_process=1, min_dist=1.3, sidelength=8, m_diffu=1, m_t6=1,
+                           yboxsize=None, n_atomtypes_=None, zboxsize=None,
+                           n_activating=0, activating_initial_yrange=30,
+                           activating_particle_type=8, grid_particle_type=7,
+                           zlim=4.25, _3Ddiviplacement=False,
+                           Lz_ini_low=0, Lz_ini_high=0,
+                           check_distance=True, n_bondtypes=1,
+                           massdict=None, overwrite=False):
+    """Generate the configuration file and save it to the given directory."""
+    if os.path.exists(os.path.join(run_dir, "configuration.txt")):
+        if not overwrite:
+            return
+        else:
+            print(f"Configuration file already exists in {run_dir}. Overwriting as requested.")
 
     DEFAULT_MASSDICT = {i: 1 for i in range(1, 15)}
 
     if massdict is None:
         massdict = {
-            1: mZ,
-            2: mZ,
-            3: mZ,
-            4: 1,
-            5: m_process,
-            6: m_t6,
-            7: 1,
-            8: 1,
-            9: m_process,
-            10: m_diffu
+            1: mZ, 2: mZ, 3: mZ, 4: 1, 5: m_process,
+            6: m_t6, 7: 1, 8: 1, 9: m_process, 10: m_diffu
         }
     else:
-        # fill missing keys with 1
-        # print("filling in mass ditionary with", len(DEFAULT_MASSDICT), "entries")
         massdict = {**DEFAULT_MASSDICT, **massdict}
-        # print(massdict)
 
-    
-    # Generate triangular grid
-    triangular_grid = generate_triangular_grid(MIN_COORD, MAX_COORD, sidelength)
-    
-    
-    # Initial atom entries
-    atom_table = [
-     #   [1, 1, 2, -0.5, 0.0, 0.0],
-     #   [2, 1, 3, 0.5, 0.0, 0.0],
-        [1, 9, 4, 0.0, -0.5, -2.0],
-        [2, 9, 4, 0.0, 0.5, -2.0],
-    #    [5, 2, initial_synth_ptype, 0.0, 0.0, DIVI_ZCOORD]
-    ]
-    
-    # Generate additional synthase atoms
-    for i in range(len(atom_table) + 1, n_synthases + len(atom_table) + 1):
-        while True:
-            new_x = round(random.uniform(-Lx, Lx), 2)
-            new_y = round(random.uniform(-Lx, Lx), 2)
-            if _3Ddiviplacement:
-                new_z = round(random.uniform(Lz_ini_low+1, Lz_ini_high-1), 2)
-            else:
-                new_z = zpos
-            if check_distance:
-                if check_min_distance(new_x, new_y, atom_table, min_dist):
-                    atom_table.append([i, i, initial_synth_ptype, new_x, new_y, new_z])
-                    break
-            else:
-                atom_table.append([i, i, initial_synth_ptype, new_x, new_y, new_z])
-                break
-    if n_activating:
-        for i in range(len(atom_table)+1, n_activating + len(atom_table)+1):
-            entry = [i, i, activating_particle_type,
-                         round(random.uniform(-Lx, Lx),2), 
-                         round(random.uniform(-activating_initial_yrange, activating_initial_yrange),2), 
-                         zpos]
-            atom_table.append(entry)
-    
-    # Add grid points to atom table
-    if add_grid:
-        print("grid entries:", len(triangular_grid))
-        for i, coord in enumerate(triangular_grid):
-            atom_table.append([atom_table[-1][0] + 1, atom_table[-1][1] + 1, grid_particle_type, coord[0], coord[1], zpos])
-        
+    atom_table = generate_atom_table(
+        Lx=Lx, n_synthases=n_synthases, add_grid=add_grid,
+        initial_synth_ptype=initial_synth_ptype, zpos=zpos,
+        m_process=m_process, min_dist=min_dist, sidelength=sidelength,
+        m_t6=m_t6, n_activating=n_activating,
+        activating_initial_yrange=activating_initial_yrange,
+        activating_particle_type=activating_particle_type,
+        grid_particle_type=grid_particle_type,
+        _3Ddiviplacement=_3Ddiviplacement,
+        Lz_ini_low=Lz_ini_low, Lz_ini_high=Lz_ini_high,
+        check_distance=check_distance, mZ=mZ,
+    )
+
     n_atoms = len(atom_table)
-    #if n_atomtypes_:
-    #    n_atomtypes = n_atomtypes_
-    #else:
-    #    n_atomtypes = int(max(np.array(atom_table)[:, 2]))
     n_atomtypes = len(DEFAULT_MASSDICT)
     Lhalved = Lx
-    if yboxsize:
-        yLhalved = yboxsize
-    else:
-        yLhalved = Lhalved
-    
-    # Create configuration text
+    yLhalved = yboxsize if yboxsize else Lhalved
+
     gridstring = "\n".join(" ".join(map(str, entry)) for entry in atom_table)
-    
-    masses_block = "\n".join(
-        f"{k} {v}" for k, v in massdict.items()
-    )
-    
+    masses_block = "\n".join(f"{k} {v}" for k, v in massdict.items())
+
     config_content = f"""
 ´Divisome´ setup with grid of reaction ghosts
 {n_atoms} atoms
@@ -250,12 +235,7 @@ Bonds
 
 1 1 1 2
 """.strip()
-    
-    # Ensure output directory exists
+
     os.makedirs(run_dir, exist_ok=True)
-    
-    # Write to file
     with open(os.path.join(run_dir, "configuration.txt"), "w") as f:
         f.write(config_content)
-    
-    #print(f"Configuration file saved to {os.path.join(run_dir, 'configuration.txt')}")

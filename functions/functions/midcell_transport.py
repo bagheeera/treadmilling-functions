@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
-
+import tqdm as tqdm
 
 def plot_func(
     df,
@@ -652,7 +652,7 @@ def compute_max_age_profiles(df, times, y_range=(-35, 35), nbins_y=30):
 
     profiles = {}
 
-    for t in times:
+    for t in tqdm(times):
         df_t = df[df['time'] == t].copy()
 
         df_t['mol_age'] = df_t['mol'].map(mol_max_age)

@@ -13,7 +13,7 @@ from tqdm.notebook import tqdm
 ccycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
 import pickle
 from scipy.optimize import curve_fit
-
+import gzip
 from tueplots import cycler
 from tueplots.constants import markers
 from tueplots.constants.color import palettes
