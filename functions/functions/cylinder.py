@@ -210,7 +210,7 @@ def render_time_movie(t_grid, z_grid, r_snapshots, t_snapshots, filename, cam_di
         cam_dict = {
             'position':    (-1439.267348837681, 367.91393768244296, 2.6378280610901945),
             'focal_point': (0.0, 0.0, 0.15),
-            'view_up':     (-0.2476655423778592, -0.9687882884811285, -0.010537135307405729)
+            'view_up':     (0, -0.9687882884811285, 0)
         }
         print("using preset front view")
     elif select_view == "side":
@@ -294,3 +294,96 @@ def diam_plot(D, key, ax, modelonly=False, label=None, mdlabel=None, coltharp_co
         ax.plot(t_model, d_alpha(t_model, tau_c, alpha),
             color=coltharp_color,
             label=label)
+
+
+
+
+def render_clipping_movie(mesh, filename, cam_dict,
+                          image_scale=2, num_frames=10,
+                          start_x=-150, end_x=-18,
+                          clip_normal=[1, 0, 0],
+                          scalars='radius', cmap='Purples_r',
+                          demo=False,
+                          show_scalar_bar=True):
+    import pyvista as pv
+    """
+    Renders a movie of a clipping plane passing through a mesh.
+
+    Parameters
+    ----------
+    mesh : pv.PolyData
+        Input mesh with point data scalars.
+    filename : str
+        Output movie filename. Ignored in demo mode.
+    cam_dict : dict
+        Keys: position, focal_point, view_up.
+    image_scale : int
+        Supersampling factor. Default 2.
+    num_frames : int
+        Number of frames in the movie. Default 10.
+    start_x, end_x : float
+        Range of clipping plane x-origin.
+    clip_normal : list
+        Clipping plane normal vector.
+    scalars : str
+        Point data array to color by. Default 'radius'.
+    cmap : str
+        Colormap. Default 'viridis'.
+    demo : bool
+        If True, render a single mid-clip frame interactively via trame
+        instead of writing a movie. Useful for testing camera/clip settings.
+    """
+    if demo:
+        # single interactive frame at midpoint of clip range for testing
+        mid_x      = (start_x + end_x) / 2
+        clipped    = mesh.clip(normal=clip_normal, origin=[mid_x, 0, 0], invert=False)
+        plotter    = pv.Plotter()
+        plotter.add_mesh(clipped, scalars=scalars, cmap=cmap,
+                         smooth_shading=True, show_scalar_bar=True)
+        plotter.camera_position = [
+            cam_dict['position'],
+            cam_dict['focal_point'],
+            cam_dict['view_up']
+        ]
+        #plotter.add_text(f'Demo clip at x={mid_x:.2f}', position='upper_left')
+        plotter.show(jupyter_backend="trame")
+        # print camera state after interaction so you can copy it into cam_dict
+        print("camera position:   ", plotter.camera.position)
+        print("camera focal_point:", plotter.camera.focal_point)
+        print("camera view_up:    ", plotter.camera.up)
+        return plotter
+
+    pv.start_xvfb()
+    x_origins = np.linspace(start_x, end_x, num_frames)
+
+    plotter = pv.Plotter(off_screen=True)
+    plotter.enable_anti_aliasing('ssaa')
+    plotter.camera_position = [
+        cam_dict['position'],
+        cam_dict['focal_point'],
+        cam_dict['view_up']
+    ]
+    plotter.image_scale = image_scale
+    plotter.open_movie(filename)
+
+    for origin_x in tqdm(x_origins, total=len(x_origins)):
+        clipped = mesh.clip(normal=clip_normal, origin=[origin_x, 0, 0], invert=False)
+
+        if plotter.actors.get('clipped_mesh_actor'):
+            plotter.remove_actor('clipped_mesh_actor')
+
+        plotter.add_mesh(clipped,
+                         name='clipped_mesh_actor',
+                         scalars=scalars,
+                         cmap=cmap,
+                         smooth_shading=True,
+                         show_scalar_bar=show_scalar_bar)
+        #plotter.add_text(f'Clip at x={origin_x:.2f}',
+        #                 name='origin_label', position='upper_left')
+        plotter.camera.position    = cam_dict['position']
+        plotter.camera.focal_point = cam_dict['focal_point']
+        plotter.camera.up          = cam_dict['view_up']
+        plotter.write_frame()
+
+    plotter.close()
+    print(f"Movie saved to {filename}")
