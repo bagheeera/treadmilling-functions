@@ -97,19 +97,27 @@ def copy_reaction_directories(source_dir, base_target_dir, param_keys, combinati
 
 
 
-def generate_triangular_grid(min_coord, max_coord, sidelength):
-    """Generate a triangular grid of points."""
-    import math
+import math
+
+def generate_triangular_grid(min_x, max_x, min_y, max_y, sidelength):
+    """Generate a triangular grid within a rectangular boundary."""
     coordinates = []
-    y = min_coord
+    y = min_y
     row = 0
-    while y <= max_coord:
-        x_start = min_coord if row % 2 == 0 else min_coord + (sidelength / 2)
+    
+    # Calculate vertical spacing for equilateral triangles
+    v_spacing = (math.sqrt(3) / 2) * sidelength
+    
+    while y <= max_y + 1e-9:
+        # Offset every other row by half the sidelength
+        x_start = min_x if row % 2 == 0 else min_x + (sidelength / 2)
         x = x_start
-        while x <= max_coord:
+        
+        while x <= max_x + 1e-9:
             coordinates.append((x, y))
             x += sidelength
-        y += (math.sqrt(3) / 2) * sidelength
+            
+        y += v_spacing
         row += 1
     return coordinates
 
@@ -129,10 +137,12 @@ def generate_atom_table(Lx, n_synthases, add_grid=True, initial_synth_ptype=6, z
                         _3Ddiviplacement=False, Lz_ini_low=0, Lz_ini_high=0,
                         check_distance=True, mZ=1):
     """Generate and return the atom table (list of atom entries)."""
-    MIN_COORD = -Lx
-    MAX_COORD = Lx
+    # Define rectangular boundaries
+    MIN_X, MAX_X = -Lx, Lx
+    MIN_Y, MAX_Y = -yboxsize, yboxsize
 
-    triangular_grid = generate_triangular_grid(MIN_COORD, MAX_COORD, sidelength)
+    # 1. Generate the grid with rectangular bounds
+    triangular_grid = generate_triangular_grid(MIN_X, MAX_X, MIN_Y, MAX_Y, sidelength)
 
     atom_table = [
         [1, 9, 4, 0.0, -0.5, -2.0],
