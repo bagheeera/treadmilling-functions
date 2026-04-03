@@ -15,7 +15,8 @@ def diam_plot(D, key, ax, modelonly=False, overlay="Overlay",
               coltharp_color="k",
               inset_ylim=None,
               color=None,
-              inset_yaxis_right=False,):
+              inset_yaxis_right=False,
+              borderpad=3):
     # 1. Main Plot Logic
     t, r = np.array(D[key]["t_r"]).T
     diam_md = r * 2 * 5
@@ -34,7 +35,7 @@ def diam_plot(D, key, ax, modelonly=False, overlay="Overlay",
         # 2. Handle the Inset (Check if it already exists to avoid duplicaates)
         # We store the inset reference in the main axes object to retrieve it later
         if not hasattr(ax, "my_inset"):
-            ax.my_inset = inset_axes(ax, width=width, height=height, loc='lower left', borderpad=3)
+            ax.my_inset = inset_axes(ax, width=width, height=height, loc='lower left', borderpad=borderpad)
             #ax.my_inset.set_title("H_total Mean", fontsize=9)
         
         ax_ins = ax.my_inset
@@ -54,7 +55,8 @@ def diam_plot(D, key, ax, modelonly=False, overlay="Overlay",
         )
         
         # Refresh legends for both
-        ax.legend(loc='upper right', fontsize=8, title=legendtitle, ncol=ncol)
+        if overlay:
+            ax.legend(loc='upper right', fontsize=8, title=legendtitle, ncol=ncol)
         ax_ins.set_xlim(-300,300)
         if inset_ylim is not None:
             ax_ins.set_ylim(inset_ylim)
@@ -258,65 +260,59 @@ import os
 
 def plot_nr_processive_pooled(D, key, ax, stype=11, prm=None, overlay=None, color=None):
     """
-    Plots the count of a specific particle type over time, 
-    pooling across multiple seeds/parameters if provided.
+    Plots counts over time, storing the result in D[key] for instant replotting.
     """
-    def _get_counts(k):
-        # Path handling - using your original structure
-        path = D[k]["rundir"] + "/df_synth.feather"
-        if not os.path.exists(path): 
-            return None
-        
-        # Load only necessary columns for speed
-        df = feather.read_feather(path, columns=["time", "type"])
-        
-        # Filter for processive type and count occurrences per time step
-        counts = df[df["type"] == stype].groupby("time").size()
-        return counts
-
-    all_series = []
-
-    if prm is None:
-        # Single run mode
-        s = _get_counts(key)
-        if s is not None: 
-            all_series.append(s)
+    
+    # Check if we have already calculated and stored this specific summary
+    # We use a sub-key that includes the stype to avoid conflicts
+    storage_key = f"summary_type_{stype}"
+    
+    if storage_key in D[key]:
+        # DATA RECOVERY: Load from memory
+        mean_counts = D[key][storage_key]['mean']
+        std_counts = D[key][storage_key]['std']
+        time = mean_counts.index
     else:
-        # Pooling mode: Iterate through all seeds in prm['seed']
-        for s_val in prm.get('seed', [1]):
-            # Update key to the specific seed
+        # DATA PROCESSING: Load from disk
+        def _get_counts(k):
+            path = D[k]["rundir"] + "/df_synth.feather"
+            if not os.path.exists(path): return None
+            df = feather.read_feather(path, columns=["time", "type"])
+            return df[df["type"] == stype].groupby("time").size()
+
+        all_series = []
+        seeds = prm.get('seed', [1]) if prm else [1]
+        
+        for s_val in seeds:
             k = fct.utils.update_key(key, seed=s_val)
             if k in D:
                 counts = _get_counts(k)
                 if counts is not None:
-                    # Name the series so concat handles them as columns
                     counts.name = s_val
                     all_series.append(counts)
 
-    if not all_series:
-        print(f"No data found for {overlay}")
-        return
+        if not all_series: return
 
-    # Combine all seeds into one DataFrame, aligned by time index
-    # Filling NaN with 0 because if a time step is missing, count is 0
-    df_pooled = pd.concat(all_series, axis=1).fillna(0)
-    
-    mean_counts = df_pooled.mean(axis=1)
-    std_counts = df_pooled.std(axis=1)
-    time = mean_counts.index
+        # Align, Fill, and Sort (to prevent the straight line issue)
+        df_pooled = pd.concat(all_series, axis=1).fillna(0).sort_index()
+        
+        mean_counts = df_pooled.mean(axis=1)
+        std_counts = df_pooled.std(axis=1)
+        time = mean_counts.index
 
-    # Plot the Mean
-    line, = ax.plot(time, mean_counts, label=overlay, color=color, lw=2)
-    
-    # Plot the Variance (Standard Deviation) as a shaded area
-    ax.fill_between(time, 
+        # STORAGE: Save into the dictionary for next time
+        D[key][storage_key] = {
+            'mean': mean_counts,
+            'std': std_counts
+        }
+
+    # Plotting
+    line, = ax.plot(time/60, mean_counts, label=overlay, color=color, lw=2)
+    ax.fill_between(time/60, 
                     mean_counts - std_counts, 
                     mean_counts + std_counts, 
-                    color=line.get_color(), 
-                    alpha=0.2, 
-                    lw=0)
+                    color=line.get_color(), alpha=0.2, lw=0)
 
-    ax.set_xlabel("Time")
-    ax.set_ylabel(f"Count of Type {stype}")
+    ax.set_ylabel(f"Nr of processive particles")
     if overlay:
         ax.legend()
