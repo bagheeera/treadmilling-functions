@@ -387,3 +387,56 @@ def render_clipping_movie(mesh, filename, cam_dict,
 
     plotter.close()
     print(f"Movie saved to {filename}")
+
+def plot_circle_projection(H_blurred, R_nm, ax=None, cmap='magma', lw=1.5):
+    """
+    Project H_blurred onto a circle by taking max along z for each
+    theta position, then subtract from R to get deformed radius.
+
+    Parameters
+    ----------
+    H_blurred : np.ndarray, shape (n_theta, n_z)
+        Smoothed deformation map in nm.
+    R_nm : float
+        Run-start radius in nm.
+    ax : matplotlib Axes, optional
+    cmap : str
+        Colormap for coloring the circle by local deformation.
+    """
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(5, 5))
+
+    # max deformation along z for each circumferential position
+    H_max  = H_blurred.max(axis=1)          # (n_theta,)
+    r      = R_nm - H_max                   # deformed radius per theta bin
+
+    n_theta = len(r)
+    theta   = np.linspace(0, 2 * np.pi, n_theta, endpoint=False)
+
+    x = r * np.cos(theta)
+    y = r * np.sin(theta)
+
+    # close the loop
+    x = np.append(x, x[0])
+    y = np.append(y, y[0])
+    H_max_closed = np.append(H_max, H_max[0])
+
+    # color segments by local deformation
+    from matplotlib.collections import LineCollection
+    points  = np.array([x, y]).T.reshape(-1, 1, 2)
+    segments = np.concatenate([points[:-1], points[1:]], axis=1)
+    norm    = plt.Normalize(H_max.min(), H_max.max())
+    lc      = LineCollection(segments, cmap=cmap, norm=norm, lw=lw)
+    lc.set_array(H_max_closed[:-1])
+    ax.add_collection(lc)
+
+    # reference circle
+    theta_ref = np.linspace(0, 2 * np.pi, 300)
+    ax.plot(R_nm * np.cos(theta_ref), R_nm * np.sin(theta_ref),
+            'k--', lw=0.8, alpha=0.4, label=f'R={R_nm:.0f} nm')
+
+    ax.set_aspect('equal')
+    ax.set_xlabel('x (nm)')
+    ax.set_ylabel('y (nm)')
+    plt.colorbar(lc, ax=ax, label='max deformation (nm)')
+    return ax
