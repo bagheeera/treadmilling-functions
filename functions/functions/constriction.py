@@ -175,3 +175,77 @@ def plot_center_fraction_trend(D, keys, ax, param_name, stype=8, prm=None, label
     ax.set_ylabel(f'Fraction in Center (stype {stype})')
     ax.set_ylim(0, 1.05)
     ax.grid(True, linestyle='--', alpha=0.3)
+
+
+def process_synth_to_fractions(rundir):
+    fname = os.path.join(rundir, "df_synth.feather")
+    out_name = os.path.join(rundir, "center_frac_timeseries.feather")
+    if not os.path.exists(fname): return
+
+    df = feather.read_feather(fname, columns=["time", "type", "y"])
+    df["is_center"] = df["y"].abs() <= 50  # Boolean: True if in center
+    
+    # Calculate fraction of 'True' values per time and type
+    summary = df.groupby(["time", "type"])["is_center"].mean().unstack(level="type")
+    
+    # Save with LZ4 compression
+    feather.write_feather(summary.reset_index(), out_name, compression='lz4')
+    # print("Saved center fraction timeseries to:", out_name, "for key:", rundir  )
+import functions as fct
+def plot_center_fraction_vs_time(D, key, ax, stype=8, prm=None, label=None, color=None):
+    
+    """
+    Plots the fraction of particles in center vs time, pooling across parameters.
+    """
+    def _get_timeseries(k):
+        # Look for the slim summary file
+        path = D[k]["rundir"]+ "/center_frac_timeseries.feather" # .replace("data", "bak") 
+        if not os.path.exists(path): 
+            print("not found:", path)
+            return None
+        
+        df = feather.read_feather(path).set_index("time")
+        df.columns = df.columns.astype(int)
+        
+        if stype not in df.columns: return None
+        return df[stype]
+
+    all_series = []
+
+    if prm is None:
+        s = _get_timeseries(key)
+        if s is not None: all_series.append(s)
+    else:
+        # Generate all combinations for pooling (seed, mdiffu, etc.)
+        items = sorted(prm.items())
+        p_keys, p_vals = [it[0] for it in items], [it[1] for it in items]
+        
+        for vals in product(*p_vals):
+            update_dict = dict(zip(p_keys, vals))
+            k = fct.utils.update_key(key, **update_dict)
+            if k in D:
+                s = _get_timeseries(k)
+                if s is not None: all_series.append(s)
+
+    if not all_series:
+        print(f"No time-series data found for {label}")
+        return
+
+    # Combine all series into one DataFrame (aligned by time index)
+    combined = pd.concat(all_series, axis=1)
+    
+    mean_ts = combined.mean(axis=1)
+    std_ts = combined.std(axis=1)
+    time = mean_ts.index
+
+    # Plot mean line
+    line, = ax.plot(time, mean_ts, label=label, color=color, lw=2)
+    
+    # Plot shaded error region (Std Dev)
+    ax.fill_between(time, mean_ts - std_ts, mean_ts + std_ts, 
+                    color=line.get_color(), alpha=0.2, lw=0)
+
+    ax.set_xlabel("Time (s)")
+    ax.set_ylabel(f"Fraction recruited to the ring")
+    # ax.set_ylim(0, 1.05)
+    # ax.grid(True, alpha=0.3)

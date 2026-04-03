@@ -14,12 +14,13 @@ from .sPGdeposition import *
 from .midcell_transport import *
 from .directionality import *
 from .box import *
+from .constriction import *
 
 # Automatically collect function names
 definitions = {}
 
 for mod in [utils, plot, analysis, sys_setup, kymo, xyz_reader, effective_rates,
-           load_data, sPGdeposition, directionality,
+           load_data, sPGdeposition, directionality, constriction,
            midcell_transport]:
     fname = mod.__name__.split('.')[-1]
     defs = {

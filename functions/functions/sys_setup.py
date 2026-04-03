@@ -130,7 +130,7 @@ def check_min_distance(new_x, new_y, atom_table, min_dist):
             return False
     return True
 
-def generate_atom_table(Lx, n_synthases, add_grid=True, initial_synth_ptype=6, zpos=0.5,
+def generate_atom_table(Lx, yboxsize, n_synthases, add_grid=True, initial_synth_ptype=6, zpos=0.5,
                         m_process=1, min_dist=1.3, sidelength=8, m_t6=1,
                         n_activating=0, activating_initial_yrange=30,
                         activating_particle_type=8, grid_particle_type=7,
@@ -201,6 +201,7 @@ def generate_configuration(Lx, n_synthases, run_dir, add_grid=True, initial_synt
         massdict = {**DEFAULT_MASSDICT, **massdict}
 
     atom_table = generate_atom_table(
+        yboxsize=yboxsize,
         Lx=Lx, n_synthases=n_synthases, add_grid=add_grid,
         initial_synth_ptype=initial_synth_ptype, zpos=zpos,
         m_process=m_process, min_dist=min_dist, sidelength=sidelength,

@@ -943,3 +943,85 @@ def plot_nr_active(D, key, ax, overlay):
     else:
         nr_active = D[key]["nr_active"]
     return ax.plot(nr_active, label=overlay)
+
+import os
+import pandas as pd
+import pyarrow.feather as feather
+def process_synth_to_slim(rundir, output_name="absy_summary.feather"):
+    """
+    Reads df_synth.feather from a single rundir and saves a tiny summary.
+    The summary has 'time' as the index and 'type' as columns.
+    """
+    input_path = os.path.join(rundir, "df_synth.feather")
+    output_path = os.path.join(rundir, output_name)
+    
+    if not os.path.exists(input_path):
+        print(f"Error: {input_path} not found.")
+        return
+
+    # 1. Load only the essential columns
+    df = feather.read_feather(input_path, columns=["time", "type", "y"])
+    
+    # 2. Calculate absolute Y
+    df["absy"] = df["y"].abs()
+    
+    # 3. Pivot the data: Rows=Time, Columns=Type, Values=Mean Absolute Y
+    # This creates a "Wide" table: [time, type_12, type_13, etc.]
+    summary = df.groupby(["time", "type"])["absy"].mean().unstack(level="type")
+    
+    # 4. Save with LZ4 compression (Standard for Feather/Arrow speed)
+    # We reset index so 'time' is a column for feather compatibility
+    feather.write_feather(summary.reset_index(), output_path, compression='lz4')
+    
+    print(f"Processed {rundir}: Slim file saved ({os.path.getsize(output_path)/1024:.1f} KB)")
+
+
+def absy_plot(D, key, ax, synthtype=[12], overlay=None, prm=None):
+    def _get_mean_absy(k):
+        fname = os.path.join(D[k]["rundir"], "absy_summary.feather")
+        if not os.path.exists(fname):
+            return None
+        
+        df = feather.read_feather(fname).set_index("time")
+        
+        # Convert column names (types) to integers to ensure match
+        df.columns = df.columns.astype(int)
+        
+        # Ensure input synthtypes are also integers
+        target_types = [int(t) for t in synthtype]
+        available_types = [t for t in target_types if t in df.columns]
+        
+        if not available_types:
+            return None
+            
+        return 5*df[available_types].mean(axis=1).sort_index()
+
+    if prm is None:
+        s = _get_mean_absy(key)
+        if s is not None:
+            ax.plot(s.index, s.values, label=overlay)
+    else:
+        all_series = []
+        for seed in prm["seed"]:
+            k = fct.utils.update_key(key, seed=seed)
+            if k in D:
+                s = _get_mean_absy(k)
+                if s is not None:
+                    s.name = seed
+                    all_series.append(s)
+
+        if not all_series:
+            return
+
+        pooled = pd.concat(all_series, axis=1)
+        mean = pooled.mean(axis=1).sort_index()
+        std  = pooled.std(axis=1).sort_index()
+
+        ax.plot(mean.index, mean.values, label=overlay)
+        ax.fill_between(mean.index, 
+                        (mean - std).values, 
+                        (mean + std).values, 
+                        alpha=0.25)
+        # ax.set_title(f"n={len(all_series)} seeds")
+
+    ax.legend()
