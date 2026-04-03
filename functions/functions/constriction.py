@@ -249,3 +249,74 @@ def plot_center_fraction_vs_time(D, key, ax, stype=8, prm=None, label=None, colo
     ax.set_ylabel(f"Fraction recruited to the ring")
     # ax.set_ylim(0, 1.05)
     # ax.grid(True, alpha=0.3)
+
+
+import numpy as np
+import pandas as pd
+import pyarrow.feather as feather
+import os
+
+def plot_nr_processive_pooled(D, key, ax, stype=11, prm=None, overlay=None, color=None):
+    """
+    Plots the count of a specific particle type over time, 
+    pooling across multiple seeds/parameters if provided.
+    """
+    def _get_counts(k):
+        # Path handling - using your original structure
+        path = D[k]["rundir"] + "/df_synth.feather"
+        if not os.path.exists(path): 
+            return None
+        
+        # Load only necessary columns for speed
+        df = feather.read_feather(path, columns=["time", "type"])
+        
+        # Filter for processive type and count occurrences per time step
+        counts = df[df["type"] == stype].groupby("time").size()
+        return counts
+
+    all_series = []
+
+    if prm is None:
+        # Single run mode
+        s = _get_counts(key)
+        if s is not None: 
+            all_series.append(s)
+    else:
+        # Pooling mode: Iterate through all seeds in prm['seed']
+        for s_val in prm.get('seed', [1]):
+            # Update key to the specific seed
+            k = fct.utils.update_key(key, seed=s_val)
+            if k in D:
+                counts = _get_counts(k)
+                if counts is not None:
+                    # Name the series so concat handles them as columns
+                    counts.name = s_val
+                    all_series.append(counts)
+
+    if not all_series:
+        print(f"No data found for {overlay}")
+        return
+
+    # Combine all seeds into one DataFrame, aligned by time index
+    # Filling NaN with 0 because if a time step is missing, count is 0
+    df_pooled = pd.concat(all_series, axis=1).fillna(0)
+    
+    mean_counts = df_pooled.mean(axis=1)
+    std_counts = df_pooled.std(axis=1)
+    time = mean_counts.index
+
+    # Plot the Mean
+    line, = ax.plot(time, mean_counts, label=overlay, color=color, lw=2)
+    
+    # Plot the Variance (Standard Deviation) as a shaded area
+    ax.fill_between(time, 
+                    mean_counts - std_counts, 
+                    mean_counts + std_counts, 
+                    color=line.get_color(), 
+                    alpha=0.2, 
+                    lw=0)
+
+    ax.set_xlabel("Time")
+    ax.set_ylabel(f"Count of Type {stype}")
+    if overlay:
+        ax.legend()
