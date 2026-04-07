@@ -526,3 +526,99 @@ def save_fig(fig, name, sources, notes="", footersize=4, notebook_name="",
         yaml.dump(meta, f)
 
     print(f"Figure saved: {out}/{name}.png and .svg with metadata")
+
+
+import numpy as np
+import pandas as pd
+from itertools import product
+
+def collect_trend_from_base(D, base_key, param_name, param_values, analysis_func, prm_pool=None, cache_name="circ_v1"):
+    """
+    Varies a parameter from a base key, pools multiple seeds/runs, and returns trend data.
+    
+    Parameters:
+    -----------
+    D : dict
+        The global simulation results dictionary.
+    base_key : tuple/dict
+        The 'anchor' key used as a template for the parameter sweep.
+    param_name : str
+        The specific parameter to vary on the X-axis (e.g., 'tauhyd').
+    param_values : list
+        The range of values for param_name to evaluate.
+    analysis_func : callable
+        A function(D, key) that returns a float for a single simulation run.
+    prm_pool : dict, optional
+        Secondary parameters to average over for every X-point (e.g., {'seed': [1,2,3]}).
+    cache_name : str
+        Unique identifier to store/retrieve results in D[key] to avoid re-calculation.
+
+    Returns:
+    --------
+    x_vals : np.array
+        The sorted parameter values.
+    y_means : np.array
+        Mean results from analysis_func (contains np.nan if data is missing).
+    y_stds : np.array
+        Standard deviation of results (contains np.nan if data is missing).
+    """
+    import functions as fct
+    results = []
+    storage_key = f"cache_{cache_name}"
+
+    for val in param_values:
+        # Generate the specific key for this X-axis coordinate
+        current_key = fct.utils.update_key(base_key, **{param_name: val})
+        all_results = []
+        
+        # Define the set of runs to pool (e.g., all seeds for this tauhyd)
+        if prm_pool:
+            items = sorted(prm_pool.items())
+            pk, pv = [it[0] for it in items], [it[1] for it in items]
+            
+            for vals in product(*pv):
+                update_dict = dict(zip(pk, vals))
+                k = fct.utils.update_key(current_key, **update_dict)
+                
+                if k in D:
+                    # Check cache to avoid expensive file I/O
+                    res = D[k].get(storage_key)
+                    if res is None:
+                        try:
+                            res = analysis_func(D, k)
+                            D[k][storage_key] = res
+                        except Exception:
+                            res = np.nan
+                    
+                    # Handle old cache corruption (if it was a dict) or missing data
+                    if isinstance(res, dict):
+                        res = res.get('mean', np.nan)
+                    
+                    if res is not None:
+                        all_results.append(float(res))
+                else:
+                    # Key does not exist in D; append NaN to represent missing data
+                    all_results.append(np.nan)
+        else:
+            # Single-run mode (no pooling)
+            if current_key in D:
+                res = analysis_func(D, current_key)
+                all_results.append(float(res) if res is not None else np.nan)
+            else:
+                all_results.append(np.nan)
+
+        # Calculate statistics for the current X-point
+        if all_results:
+            # np.nanmean/std ignore the NaNs, so if 2/3 seeds exist, you get an average.
+            # If all are NaN, it returns NaN.
+            m = np.nanmean(all_results)
+            s = np.nanstd(all_results)
+            results.append((val, m, s))
+        else:
+            results.append((val, np.nan, np.nan))
+            
+    # Sort by X-axis value to ensure the line plot connects chronologically
+    results.sort(key=lambda x: x[0])
+    x_v, y_m, y_s = zip(*results)
+    
+    return np.array(x_v), np.array(y_m), np.array(y_s)
