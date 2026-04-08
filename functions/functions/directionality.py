@@ -178,3 +178,46 @@ def alpha_hist(key, ax, overlay, D, specifylabel=False, legendtitle=False,bins=N
         linestyle=meanls,  # optional: improves visibility
         linewidth=1.2
     )
+
+
+def sliding_window_asymmetry(df, window_size=20, step_size=5):
+    """
+    Sliding window segmentation for asymmetry analysis.
+    df: DataFrame with columns ['id', 'x', 'y']
+    window_size: Number of frames per segment
+    step_size: How many frames to skip between windows
+    """
+    segment_asymmetries = []
+    
+    # Process each particle individually
+    for pid, group in df.groupby("id"):
+        coords = group[["x", "y"]].to_numpy()
+        n_points = len(coords)
+        
+        if n_points < window_size:
+            continue
+            
+        # Slide the window across the trajectory
+        for start in range(0, n_points - window_size + 1, step_size):
+            window = coords[start : start + window_size]
+            
+            # Use the Huet logic from before
+            a_val = compute_huet_asymmetry_from_array(window)
+            if np.isfinite(a_val):
+                segment_asymmetries.append(a_val)
+                
+    return segment_asymmetries
+
+def compute_huet_asymmetry_from_array(coords):
+    """Helper to process raw numpy arrays."""
+    centered = coords - np.mean(coords, axis=0)
+    tensor = np.dot(centered.T, centered) / len(coords)
+    eigvals = np.linalg.eigvalsh(tensor)
+    l1, l2 = np.sort(eigvals)[::-1]
+    
+    if (l1**2 + l2**2) == 0: return 0.0
+    
+    num = (l1**2 - l2**2)**2
+    den = 2 * (l1**2 + l2**2)**2
+    val = 1 - (num / den)
+    return -np.log(np.clip(val, 1e-10, 1.0))
