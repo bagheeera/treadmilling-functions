@@ -153,7 +153,7 @@ def merge_msd_analysis(files, MSD_analysis):
     return merged
 
 from pathlib import Path
-from synthana import analysis, utils
+# from synthana import analysis, utils
 
 
 def plot_msd_alpha(xmlfile, MSD_analysis, ax, color="steelblue", show_filtered=True):
@@ -382,22 +382,50 @@ def browse_datasets(file_list, msd_results, color="steelblue", label="Dataset",
 
 
 def violin_boxplot(ax, positions, data_dict, colors, widths=0.15, alpha=0.3):
-    # violin in background
+    """
+    Creates a combined Violin and Boxplot visualization on a given Matplotlib axis.
+    
+    Parameters:
+    -----------
+    ax : matplotlib.axes.Axes
+        The axis object where the plot will be drawn.
+    positions : list or array-like
+        The x-axis coordinates where each plot should be placed (e.g., [1, 2, 3]).
+    data_dict : dict
+        A dictionary containing the data to plot. 
+        Keys are used as X-axis labels, Values are lists/arrays of numerical data.
+    colors : list
+        List of colors for each plot (must match the number of keys in data_dict).
+    widths : float, optional
+        The width of the boxplots. Default is 0.15.
+    alpha : float, optional
+        Transparency for both the violin bodies and the boxes. Default is 0.3.
+    """
+    
+    # 1. Generate Violin Plot (Background)
+    # data_dict.values() extracts the numerical arrays for each category
     parts = ax.violinplot(data_dict.values(), positions=positions,
-                    showmedians=False, showextrema=False)
+                          showmedians=False, showextrema=False)
+    
+    # Apply custom colors to violin bodies
     for pc, color in zip(parts["bodies"], colors):
         pc.set_facecolor(color)
         pc.set_alpha(alpha=alpha)
 
-    # boxplot in foreground
+    # 2. Generate Boxplot (Foreground)
+    # patch_artist=True is required to fill the boxes with color
     bp = ax.boxplot(data_dict.values(), positions=positions,
-                widths=widths, patch_artist=True,
-                showfliers=False,
-                medianprops=dict(color="black", linewidth=2))
+                    widths=widths, patch_artist=True,
+                    showfliers=False, # Removes outliers to keep the plot clean
+                    medianprops=dict(color="black", linewidth=2))
+    
+    # Apply custom colors and alpha to the box patches
     for patch, color in zip(bp["boxes"], colors):
         patch.set_facecolor(color)
         patch.set_alpha(alpha)
 
+    # 3. Final Formatting
+    # Use the dictionary keys to label the categories on the X-axis
     ax.set_xticks(positions)
     ax.set_xticklabels(data_dict.keys())
 
@@ -410,3 +438,9 @@ def extract_timeunit(s):
     if match:
         return match.group(1) + " " + match.group(2).lower()
     return "0 ms" #None, None
+def timeunit_to_ms(filename):
+    label = extract_timeunit(filename)
+    if label is None:
+        return float("inf")
+    number, unit = label.split()
+    return int(number) if unit == "ms" else int(number) * 1000
