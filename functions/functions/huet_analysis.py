@@ -41,8 +41,15 @@ def analyze_by_time_lag(group, tau_fit=0.05, tau_dev=0.2):
     dt = group['time'].diff().iloc[1]
     
     # Convert time lags to point indices
-    n_f = int(max(2, np.floor(tau_fit / dt)))   # Minimum 2 points to fit a line
-    n_dev = int(max(n_f + 1, np.floor(tau_dev / dt)))
+    # n_f = int(max(2, np.floor(tau_fit / dt)))   # Minimum 2 points to fit a line
+    # n_dev = int(max(n_f + 1, np.floor(tau_dev / dt)))
+
+    # Use round() instead of floor() to handle 0.49999999 issues
+    n_f = int(max(2, np.round(tau_fit / dt)))
+    n_dev = int(max(n_f + 1, np.round(tau_dev / dt)))
+    
+    # DEBUG PRINT: Uncomment this to see why it fails inside the loop
+    # print(f"Processing: N={N}, n_f={n_f}, n_dev={n_dev}")
     
     if N <= n_dev:
         return None # Trajectory too short for these time scales
@@ -180,3 +187,102 @@ def plot_huet_analysis(group, tau_fit=0.05, tau_dev=0.2):
     plt.show()
 
 # Example: plot_huet_analysis(df[df['id'] == group_id], tau_fit=0.1, tau_dev=0.5)
+
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+def plot_meta_analysis_points(all_configs, d_quantiles=(0.02, 0.98), dev_quantiles=(0.02, 0.98)):
+    """
+    Plots D and Dev distributions, truncating data based on quantiles 
+    to handle outliers and simplify the ylim situation.
+    """
+    fig, axes = plt.subplots(2, 1, figsize=(14, 12), sharex=True)
+    
+    # --- 1. Filter and Plot Diffusion (D) ---
+    d_min, d_max = all_configs['D'].quantile(d_quantiles)
+    # Ensure we don't truncate D below 0
+    d_min = max(0, d_min)
+    
+    d_filtered = all_configs[(all_configs['D'] >= d_min) & (all_configs['D'] <= d_max)]
+    
+    sns.violinplot(
+        data=d_filtered, x='param_set', y='D', 
+        ax=axes[0], cut=0, inner="quart", palette="viridis"
+    )
+    axes[0].set_title(f"Diffusion Coefficient $D$ (Truncated {d_quantiles})")
+    axes[0].set_ylabel("$D$ ($\mu m^2/s$)")
+    axes[0].grid(axis='y', alpha=0.3)
+
+    # --- 2. Filter and Plot Deviation (Dev) ---
+    dev_min, dev_max = all_configs['Dev'].quantile(dev_quantiles)
+    dev_filtered = all_configs[(all_configs['Dev'] >= dev_min) & (all_configs['Dev'] <= dev_max)]
+    
+    sns.violinplot(
+        data=dev_filtered, x='param_set', y='Dev', 
+        ax=axes[1], cut=0, inner="quart", palette="magma"
+    )
+    axes[1].axhline(0, color='red', linestyle='--', alpha=0.6)
+    axes[1].set_title(f"Deviation $Dev$ (Truncated {dev_quantiles})")
+    axes[1].set_ylabel("Deviation Score")
+    axes[1].set_xlabel("Parameter Set (N_window, n_f)")
+    axes[1].grid(axis='y', alpha=0.3)
+    
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    plt.show()
+
+# Example Usage:
+# plot_meta_analysis_points(all_configs, d_quantiles=(0.05, 0.95), dev_quantiles=(0.1, 0.9))
+
+def analyze_by_points(group, n_f, n_dev):
+    """
+    Huet analysis using explicit point indices.
+    n_f: number of points for the linear fit (e.g., 2, 3, 4)
+    n_dev: the maximum lag index to check for deviation
+    """
+    N = len(group)
+    dt = group['time'].iloc[1] - group['time'].iloc[0]
+    
+    # Physical safety check: N must be at least n_dev + 1
+    if N < n_dev + 1:
+        return None
+
+    coords = group[['x', 'y']].values
+    lags = np.arange(1, n_dev + 1)
+    times = lags * dt
+    
+    # Calculate MSD and Huet Fit
+    msd_obs = calculate_msd(coords, lags)
+    
+    # Pass n_f as the index for the weighted regression
+    model = fit_huet_msd(msd_obs, lags, dt, N_total=N, n_f_idx=n_f)
+    
+    msd_pred = model.predict(times.reshape(-1, 1))
+    dev_score = calculate_huet_dev(msd_obs, msd_pred)
+    d_coeff = model.coef_[0] / 4
+
+    return {
+        'D': d_coeff,
+        'Dev': dev_score,
+        'n_f_used': n_f,
+        'n_dev_used': n_dev,
+        'N_window': N,
+        'intercept': model.intercept_
+    }
+
+def analyze_windowed_trajectory_points(group, window_pts, step_pts, n_f, n_dev):
+    results = []
+    
+    if len(group) < window_pts:
+        return pd.DataFrame()
+
+    for start in range(0, len(group) - window_pts + 1, step_pts):
+        window_df = group.iloc[start : start + window_pts]
+        res = analyze_by_points(window_df, n_f, n_dev)
+        
+        if res:
+            res['window_start_idx'] = start
+            res['id'] = group['id'].iloc[0]
+            results.append(res)
+            
+    return pd.DataFrame(results)

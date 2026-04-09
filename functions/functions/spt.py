@@ -444,3 +444,51 @@ def timeunit_to_ms(filename):
         return float("inf")
     number, unit = label.split()
     return int(number) if unit == "ms" else int(number) * 1000
+
+
+import ipywidgets as widgets
+from ipywidgets import interact, fixed
+import matplotlib.pyplot as plt
+import numpy as np
+
+def plot_traces(file_index=0, file_list=[]):
+        # 1. Select and load file
+        f = file_list[file_index]
+        df = fct.spt.read_xml(f)
+        
+        # 2. Select IDs for sampling
+        pids = df["id"].unique()
+        sample_size = min(len(pids), 1500)
+        sel = np.random.choice(pids, sample_size, replace=False)
+        
+        # 3. Filter and Plot
+        fig, ax = plt.subplots(figsize=(6, 6))
+        
+        # Updated scatter call per your request
+        df_filtered = df[df["id"].isin(sel)]
+        fct.spt.df_scatter(df_filtered, ax, colorby="id",
+                           cmap="cividis")
+        
+        # ax.set_xlim(20, 70)
+        # ax.set_ylim(20, 70)
+        ax.set_title(f"Index {file_index}: {fct.spt.extract_timeunit(f)}")
+        
+        plt.show()
+
+def start_csv_browser(file_list):
+    """
+    Pass any file list to this function to create a slider-based explorer.
+    """
+    # Use 'fixed' for the file_list so interact doesn't try to make a widget for it
+    interact(
+        plot_traces, 
+        file_list=fixed(file_list), 
+        file_index=widgets.IntSlider(
+            min=0, 
+            max=len(file_list) - 1, 
+            step=1, 
+            value=0,
+            description='File Index:',
+            continuous_update=False
+        )
+    )
