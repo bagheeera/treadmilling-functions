@@ -616,25 +616,41 @@ def window_max_span(coords):
         return np.nan
     return pdist(coords).max()
 
-def sliding_window_span(df, window_sizes, step_size=1):
-    """
-    Computes mean max-span per id for multiple window sizes.
-    Returns dict: {pid: {L: mean_span}}
-    """
-    results = {}
+# def sliding_window_span(df, window_sizes, step_size=1):
+#     """
+#     Computes mean max-span per id for multiple window sizes.
+#     Returns dict: {pid: {L: mean_span}}
+#     """
+#     results = {}
 
+#     for pid, group in df.groupby("id"):
+#         coords = group[["x", "y"]].to_numpy()
+#         n_points = len(coords)
+#         results[pid] = {}
+
+#         for L in window_sizes:
+#             if n_points < L:
+#                 continue
+#             spans = [
+#                 window_max_span(coords[start : start + L])
+#                 for start in range(0, n_points - L + 1, step_size)
+#             ]
+#             results[pid][L] = np.nanmean(spans)
+
+#     return results
+def sliding_window_span(df, window_sizes, step_size=1):
+    records = []
     for pid, group in df.groupby("id"):
         coords = group[["x", "y"]].to_numpy()
         n_points = len(coords)
-        results[pid] = {}
 
         for L in window_sizes:
             if n_points < L:
                 continue
-            spans = [
-                window_max_span(coords[start : start + L])
-                for start in range(0, n_points - L + 1, step_size)
-            ]
-            results[pid][L] = np.nanmean(spans)
+            for start in range(0, n_points - L + 1, step_size):
+                window = coords[start : start + L]
+                span = window_max_span(window)
+                if np.isfinite(span):
+                    records.append({"pid": pid, "L": L, "span": span})
 
-    return results
+    return pd.DataFrame(records)
