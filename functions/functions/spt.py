@@ -492,3 +492,149 @@ def start_csv_browser(file_list):
             continuous_update=False
         )
     )
+
+def plot_pid_windows_eigenvectors(xmlfile, pid, df_read_fn, L,
+                                  fontsize=6,
+                                  offset=0,
+                                  cmap=plt.cm.viridis):
+    df     = df_read_fn(xmlfile)
+    df_pid = df[df["id"] == pid].copy().reset_index(drop=True)
+
+    n_frames  = len(df_pid)
+    n_windows = n_frames // L
+    
+    fig, ax = plt.subplots(figsize=(5, 5))
+
+    for i in range(n_windows):
+        window = df_pid.iloc[i*L : (i+1)*L]
+        color  = cmap(i / max(n_windows - 1, 1))
+
+        ax.plot(window["x"], window["y"], color=color, linewidth=2, alpha=0.7)
+        ax.plot(window["x"].iloc[0], window["y"].iloc[0],
+                "o", color=color, markersize=7, zorder=3,
+                markeredgecolor="k", markeredgewidth=0.5)
+
+        # ── gyration tensor ────────────────────────────────────────────────────
+        xy     = window[["x", "y"]].values
+        center = xy.mean(axis=0)
+        cov    = np.cov(xy.T)
+        eigvals, eigvecs = np.linalg.eigh(cov)  # eigvals ascending
+        lam2, lam1 = np.sqrt(eigvals)            # λ1 >= λ2
+        v1,   v2   = eigvecs[:, 1], eigvecs[:, 0]
+
+        asymmetry = -np.log(1 - (lam1**2 - lam2**2)**2 / (2*(lam1**2 + lam2**2)**2))
+
+        # draw principal axes scaled by eigenvalues
+        for vec, lam, ls in [(v1, lam1, "-"), (v2, lam2, "-")]:
+            ax.annotate("", 
+                        xy=center + lam * vec,
+                        xytext=center - lam * vec,
+                        arrowprops=dict(arrowstyle="<->", color=color,
+                                        lw=1.5, linestyle=ls))
+
+        # annotate asymmetry at segment center
+        ax.text(center[0]+offset, center[1]+offset, f"{asymmetry:.2f}",
+                fontsize=fontsize, color=color, ha="center", va="center",
+                bbox=dict(boxstyle="round,pad=0.1", fc="white", alpha=0.6, ec="none"))
+
+    # end marker
+    ax.plot(df_pid["x"].iloc[n_windows*L - 1],
+            df_pid["y"].iloc[n_windows*L - 1],
+            "s", color=cmap(1.0), markersize=7, zorder=3,
+            markeredgecolor="k", markeredgewidth=0.5)
+
+    cmap_discrete = plt.cm.colors.BoundaryNorm(
+        boundaries=np.arange(-0.5, n_windows), ncolors=n_windows)
+    sm = plt.cm.ScalarMappable(
+        cmap=plt.cm.colors.ListedColormap([cmap(i / max(n_windows-1, 1)) 
+                                           for i in range(n_windows)]),
+        norm=plt.Normalize(vmin=-0.5, vmax=n_windows-0.5))
+    sm.set_array([])
+    cbar = plt.colorbar(sm, ax=ax, label="segment index",
+                        ticks=np.arange(n_windows))
+    cbar.set_ticklabels(np.arange(n_windows))
+    sm.set_array([])
+    # plt.colorbar(sm, ax=ax, label="segment index")
+#     ax.set_title(f"{pathlib.Path(xmlfile).stem} | pid={pid} | L={L}")
+    ax.set_aspect("equal")
+    plt.tight_layout()
+    plt.show()
+
+
+def parse_param_set(param_set_str):
+    import re
+    """Parses 'N:30, nf:6' -> (30, 6)"""
+    match = re.match(r"N:(\d+),\s*nf:(\d+)", param_set_str)
+    return int(match.group(1)), int(match.group(2))
+def plot_pid_colored_by_D(pid, all_configs, original_df, 
+                          selected_param_set,
+                           metric="D", cmap=plt.cm.coolwarm):
+    window_pts, n_f = parse_param_set(selected_param_set)
+
+    configs = all_configs[(all_configs["id"] == pid) &
+                          (all_configs["param_set"] == selected_param_set)].reset_index(drop=True)
+
+    df_pid_reset = original_df[original_df["id"] == pid].reset_index(drop=True)
+    # print(f"pid={pid}, df_pid_reset len={len(df_pid_reset)}, "
+    #       f"configs rows={len(configs)}, "
+    #       f"start range={configs['window_start_idx'].min()}-{configs['window_start_idx'].max()}, "
+    #       f"window_pts={window_pts}")
+
+
+    # ── color scale ────────────────────────────────────────────────────────────
+    values = configs[metric].values
+    vmax = np.nanpercentile(np.abs(values), 80)
+    vmin = -vmax
+    norm = plt.Normalize(vmin=vmin, vmax=vmax)
+
+    # ── per-point metric array ─────────────────────────────────────────────────
+    metric_per_point = np.full(len(df_pid_reset), np.nan)
+    for _, row in configs.iterrows():
+        start = int(row["window_start_idx"])
+        metric_per_point[start : start + window_pts] = row[metric]
+
+    # ── plot ───────────────────────────────────────────────────────────────────
+    fig, ax = plt.subplots(figsize=(5, 5))
+    ax.plot(df_pid_reset["x"], df_pid_reset["y"],
+            color="grey", linewidth=1, alpha=0.4, zorder=1)
+    ax.scatter(df_pid_reset["x"], df_pid_reset["y"],
+               c=metric_per_point, cmap=cmap, norm=norm,
+               s=30, zorder=3, edgecolors="k", linewidths=0.3)
+
+    sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+    sm.set_array([])
+    plt.colorbar(sm, ax=ax, label=metric, shrink=0.3)
+    ax.set_title(f"pid={pid} | {selected_param_set} | {metric}")
+    ax.set_aspect("equal")
+    plt.tight_layout()
+    plt.show()
+
+def window_max_span(coords):
+    """Maximum pairwise distance within a window."""
+    from scipy.spatial.distance import pdist
+    if len(coords) < 2:
+        return np.nan
+    return pdist(coords).max()
+
+def sliding_window_span(df, window_sizes, step_size=1):
+    """
+    Computes mean max-span per id for multiple window sizes.
+    Returns dict: {pid: {L: mean_span}}
+    """
+    results = {}
+
+    for pid, group in df.groupby("id"):
+        coords = group[["x", "y"]].to_numpy()
+        n_points = len(coords)
+        results[pid] = {}
+
+        for L in window_sizes:
+            if n_points < L:
+                continue
+            spans = [
+                window_max_span(coords[start : start + L])
+                for start in range(0, n_points - L + 1, step_size)
+            ]
+            results[pid][L] = np.nanmean(spans)
+
+    return results

@@ -127,8 +127,8 @@ def plot_huet_analysis(group, tau_fit=0.05, tau_dev=0.2):
     dt = group['time'].diff().iloc[1]
     
     # Calculate indices based on time
-    n_f = int(max(2, np.floor(tau_fit / dt)))
-    n_dev = int(max(n_f + 1, np.floor(tau_dev / dt)))
+    n_f = int(max(2, np.round(tau_fit / dt)))
+    n_dev = int(max(n_f + 1, np.round(tau_dev / dt)))
     
     if N <= n_dev:
         print(f"Trajectory {group['id'].iloc[0]} too short for tau_dev={tau_dev}s")
@@ -237,7 +237,7 @@ def plot_huet_analysis_by_points(window_df, n_f, n_dev, title="Window Analysis")
     plt.scatter(times[n_dev-1], msd_obs[n_dev-1], color='blue', s=100, zorder=5)
     
     # Formatting
-    plt.title(r"{title}\n$N={N}, n_f={n_f}, n_{dev}={n_dev}$")
+    plt.title(rf"{title}" + rf" | $N={N},\ n_f={n_f},\ n_{{dev}}={n_dev}$")
     plt.xlabel("Time (s)")
     plt.ylabel(r"MSD ")
     plt.legend()
@@ -440,7 +440,7 @@ def plot_specific_huet_result(result_row, original_df):
     
     # 2. Slice the original raw data
     # We filter by ID first, then slice the index
-    raw_traj = original_df[original_df['id'] == pid].iloc[start_idx : start_idx + N]
+    raw_traj = original_df[original_df['id'] == pid].reset_index(drop=True).iloc[start_idx : start_idx + N]
     
     coords = raw_traj[['x', 'y']].values
     dt = raw_traj['time'].iloc[1] - raw_traj['time'].iloc[0]

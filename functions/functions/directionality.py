@@ -180,7 +180,7 @@ def alpha_hist(key, ax, overlay, D, specifylabel=False, legendtitle=False,bins=N
     )
 
 
-def sliding_window_asymmetry(df, window_size=20, step_size=5):
+def sliding_window_asymmetry(df, window_size=20, step_size=5, return_dict=False):
     """
     Sliding window segmentation for asymmetry analysis.
     df: DataFrame with columns ['id', 'x', 'y']
@@ -188,24 +188,27 @@ def sliding_window_asymmetry(df, window_size=20, step_size=5):
     step_size: How many frames to skip between windows
     """
     segment_asymmetries = []
-    
-    # Process each particle individually
+    id_asymmetries = {}  # {pid: [a_val, ...]}
+
     for pid, group in df.groupby("id"):
         coords = group[["x", "y"]].to_numpy()
         n_points = len(coords)
-        
         if n_points < window_size:
             continue
-            
-        # Slide the window across the trajectory
+
+        pid_vals = []
         for start in range(0, n_points - window_size + 1, step_size):
             window = coords[start : start + window_size]
-            
-            # Use the Huet logic from before
             a_val = compute_huet_asymmetry_from_array(window)
             if np.isfinite(a_val):
                 segment_asymmetries.append(a_val)
-                
+                pid_vals.append(a_val)
+
+        if pid_vals:
+            id_asymmetries[pid] = np.mean(pid_vals)
+
+    if return_dict:
+        return segment_asymmetries, id_asymmetries
     return segment_asymmetries
 
 def compute_huet_asymmetry_from_array(coords):
