@@ -437,7 +437,8 @@ def reconstruct_H_blurred(H_total, rundir, blur_nm=(25, 4)):
     return H_blurred, R_nm
 
 def plot_circle_projection(H_blurred, R_nm, ax=None, cmap='magma', lw=1.5,
-                           use_cbar=False, alpha=1.0):
+                           use_cbar=False, alpha=1.0,
+                           label=None):
     """
     Project H_blurred onto a circle and plot.
     
@@ -480,7 +481,8 @@ def plot_circle_projection(H_blurred, R_nm, ax=None, cmap='magma', lw=1.5,
     else:
         # Use standard plot with the next color in the cycler
         # This is much faster for overlays and supports alpha natively
-        ax.plot(x, y, lw=lw, alpha=alpha)
+        ax.plot(x, y, lw=lw, alpha=alpha,
+            label=label)
 
     # Reference circle (dashed)
     theta_ref = np.linspace(0, 2 * np.pi, 300)
