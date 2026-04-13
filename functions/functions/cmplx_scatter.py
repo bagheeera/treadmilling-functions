@@ -2,6 +2,11 @@ from matplotlib.lines import Line2D
 import numpy as np
 
 
+from matplotlib.lines import Line2D
+import numpy as np
+import pandas as pd
+
+
 def scatter_fct(
     df,
     ax,
@@ -216,7 +221,6 @@ def scatter_fct(
                 print(f"Warning: arrow_orientation returned DataFrame instead of angle/tuple")
                 print(f"  DataFrame shape: {orientation.shape}")
                 print(f"  Columns: {list(orientation.columns)}")
-                print(f"  First few values: {orientation.head()}")
                 continue
             
             # orientation should be angle in degrees or (dx, dy) tuple
@@ -243,7 +247,6 @@ def scatter_fct(
                     dy = arrow_length * np.sin(angle_rad)
                 except (ValueError, TypeError) as e:
                     print(f"Warning: Could not convert orientation {orientation} to angle: {e}")
-                    print(f"  Type: {type(orientation)}")
                     continue
             
             ax.arrow(
@@ -309,19 +312,21 @@ def scatter_fct(
     if hideticklabels:
         ax.set_xticks([])
         ax.set_yticks([])
-    else:
-        ax.set_xlabel(xlabel)
-        ax.set_ylabel(ylabel)
+    # else:
+    #     ax.set_xlabel(xlabel)
+    #     ax.set_ylabel(ylabel)
     
     # --- Legend ---
     if display_legend:
         handles = []
         for config_name, config in particle_config.items():
             if config.get('plot', True):
+                # Use legend_markersize if specified, otherwise scale from s
+                legend_size = config.get('legend_markersize', np.sqrt(config['s']))
                 handles.append(Line2D([0], [0],
                                       label=config['label'],
                                       c=config['color'],
-                                      markersize=np.sqrt(config['s']),
+                                      markersize=legend_size,
                                       marker=config['marker'],
                                       linestyle=""))
         
@@ -330,7 +335,7 @@ def scatter_fct(
                       bbox_to_anchor=(0.5, 1.02),
                       loc=legend_loc,
                       ncol=legend_ncol,
-                      frameon=False)
+                      frameon=True)
     
     return ax
 
