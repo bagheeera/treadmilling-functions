@@ -4,7 +4,8 @@ import inspect
 from . import utils, plot, analysis, effective_rates, \
               load_data, sys_setup, kymo, xyz_reader, \
               sPGdeposition, midcell_transport, directionality, \
-              box, constriction, spt, huet_analysis  # import all your modules here
+              box, constriction, spt, huet_analysis, \
+              cmplx_scatter # import all your modules here
 
 # Optional: selectively import functions you want top-level
 from .utils import *
@@ -19,13 +20,14 @@ from .directionality import *
 from .box import *
 from .constriction import *
 from .spt import *
+from .cmplx_scatter import *
 
 # Automatically collect function names
 definitions = {}
 
 for mod in [utils, plot, analysis, sys_setup, kymo, xyz_reader, effective_rates,
            load_data, sPGdeposition, directionality, constriction,
-           midcell_transport, spt]:
+           midcell_transport, spt, cmplx_scatter]:
     fname = mod.__name__.split('.')[-1]
     defs = {
         name: obj
