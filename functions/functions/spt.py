@@ -66,17 +66,32 @@ def df_scatter(df, ax, s=0.5, vmax=None, vmin=None,
                             s=s,
                             zorder=zorder)
     else:
-        # Standard global scatter logic
-        sc = ax.scatter(df["x"], df["y"],
-                        c=df[colorby],
-                        cmap=cmap,
-                        vmax=vmax,
-                        vmin=vmin,
-                        s=s,
-                        zorder=zorder)
+        # Loop through each unique track ID to maintain the same logic as the 'if' block
+        # but without the ax.plot() calls.
+        for pid, data in df.groupby("id"):
+            points = data[["x", "y"]].values
+            colors = data[colorby].values
+            
+            if separate_cmap:
+                # Normalize colors locally for this specific ID (0 to 1)
+                norm = mcolors.Normalize(vmin=colors.min(), vmax=colors.max())
+                path_colors = cm(norm(colors))
+            else:
+                # Use global normalization
+                norm = mcolors.Normalize(
+                    vmin=vmin if vmin is not None else df[colorby].min(), 
+                    vmax=vmax if vmax is not None else df[colorby].max()
+                )
+                path_colors = cm(norm(colors))
+            
+            # Overlay the scatter points for the gradient effect (no line plotted)
+            sc = ax.scatter(points[:, 0], points[:, 1],
+                            c=path_colors,
+                            s=s,
+                            zorder=zorder)
     
     ax.set_aspect("equal")
-    return sc
+    # return sc
 
 
 import pathlib
@@ -638,19 +653,41 @@ def window_max_span(coords):
 #             results[pid][L] = np.nanmean(spans)
 
 #     return results
-def sliding_window_span(df, window_sizes, step_size=1):
+# def sliding_window_span(df, window_sizes, step_size=1):
+#     records = []
+#     for pid, group in df.groupby("id"):
+#         coords = group[["x", "y"]].to_numpy()
+#         n_points = len(coords)
+
+#         for L in window_sizes:
+#             if n_points < L:
+#                 continue
+#             for start in range(0, n_points - L + 1, step_size):
+#                 window = coords[start : start + L]
+#                 span = window_max_span(window)
+#                 if np.isfinite(span):
+#                     records.append({"pid": pid, "L": L, "span": span})
+
+#     return pd.DataFrame(records)
+
+def sliding_window_span(df, window_times, step_size=1):
+    """
+    window_times: list of window durations in seconds (e.g. [0.5, 1.0, 2.0])
+    """
     records = []
     for pid, group in df.groupby("id"):
         coords = group[["x", "y"]].to_numpy()
         n_points = len(coords)
+        dt = group["time"].diff().iloc[1]
 
-        for L in window_sizes:
-            if n_points < L:
+        for window_time in window_times:
+            window_pts = int(np.round(window_time / dt))
+            if n_points < window_pts or window_pts < 2:
                 continue
-            for start in range(0, n_points - L + 1, step_size):
-                window = coords[start : start + L]
+            for start in range(0, n_points - window_pts + 1, step_size):
+                window = coords[start : start + window_pts]
                 span = window_max_span(window)
                 if np.isfinite(span):
-                    records.append({"pid": pid, "L": L, "span": span})
+                    records.append({"pid": pid, "L": window_time, "span": span})
 
     return pd.DataFrame(records)
