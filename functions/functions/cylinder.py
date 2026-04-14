@@ -281,7 +281,7 @@ def render_time_movie(t_grid, z_grid, r_snapshots, t_snapshots, filename, cam_di
     print(f"Movie saved to {filename}")
 
 def diam_plot(D, key, ax, modelonly=False, label=None, mdlabel=None, 
-              coltharp_color="k", mdcolor=None, normalize_diameter=True):
+              coltharp_color="k", mdcolor=None, normalize_diameter=True, D_0=578):
     """
     Plot diameter evolution over time.
     
@@ -304,8 +304,9 @@ def diam_plot(D, key, ax, modelonly=False, label=None, mdlabel=None,
     mdcolor : str, optional
         Color for the data line
     normalize_diameter : bool, optional
-        If True, plot diameter/diameter_0 (normalized by initial diameter).
-        If False, plot absolute diameter values (default: True)
+        If True, plot diameter/diameter_0. If False, plot absolute diameter in nm (default: True)
+    D_0 : float, optional
+        Initial diameter in nm, used when normalize_diameter=False (default: 578 based on Coltharp 2026)
     """
     import numpy as np
     
@@ -319,18 +320,22 @@ def diam_plot(D, key, ax, modelonly=False, label=None, mdlabel=None,
     t, r = np.array(D[key]["t_r"]).T
     diam_md = r * 2 * 5
     
-    # Normalize or use absolute diameter
     if normalize_diameter:
         diam_md_plot = diam_md / diam_md[0]
+        diam_model = d_alpha(t_model, tau_c, alpha)
     else:
         diam_md_plot = diam_md
+        diam_model = d_alpha(t_model, tau_c, alpha) * D_0
     
     ax.plot(t/1000/60, diam_md_plot, lw=3, label=mdlabel, color=mdcolor)
     
     if not modelonly:
-        ax.plot(t_model, d_alpha(t_model, tau_c, alpha),
+        ax.plot(t_model, diam_model,
                 color=coltharp_color,
                 label=label)
+
+
+
 
 
 
