@@ -166,15 +166,18 @@ import numpy as np
 from tqdm import tqdm
 
 
-def render_time_movie(t_grid, z_grid, r_snapshots, t_snapshots, filename, cam_dict,
-                      clip_normal, clip_origin,
-                      image_scale=3,
-                      select_view=None):
+def render_time_movie(
+    t_grid, z_grid, r_snapshots, t_snapshots, filename, cam_dict,
+    clip_normal, clip_origin,
+    image_scale=3,
+    select_view=None,
+    render_movie=True
+):
     """
     Render a movie over time using pre-computed r_snapshots from histogram_mesh
     with per_interval=True. Compatible with both interactive Jupyter and
     headless SLURM/papermill execution.
-
+  
     Parameters
     ----------
     t_grid, z_grid : np.ndarray, shape (n_theta, n_z)
@@ -196,14 +199,19 @@ def render_time_movie(t_grid, z_grid, r_snapshots, t_snapshots, filename, cam_di
         Supersampling factor for anti-aliasing. Default 3.
     select_view : str or None
         Preset camera view. Options: 'front', 'side', or None to use cam_dict.
+    render_movie : bool, optional
+        If True (default), render and save a movie to `filename`.
+        If False, skip frame writing and save only the final rendered
+        frame as a high-resolution `.png` image instead.
     """
-    import pyvista as pv
 
-    # start virtual X display before creating plotter — prevents VTK from
-    # falling back to EGL (which fails on CPU-only SLURM nodes).
-    # safe to call even when a real display exists.
+    import pyvista as pv
+    import numpy as np
+    from tqdm import tqdm
+    import os
+
     pv.start_xvfb()
-    pv.global_theme.jupyter_backend = "static" 
+    pv.global_theme.jupyter_backend = "static"
 
     # preset camera views
     if select_view == "front":
@@ -222,8 +230,6 @@ def render_time_movie(t_grid, z_grid, r_snapshots, t_snapshots, filename, cam_di
         print("using preset side view")
 
     n_theta, n_z = t_grid.shape
-
-    # z_grid is in simulation units — convert to nm to match x, y (in nm)
     z_nm = z_grid * 5.0
 
     # precompute faces — fixed topology, only points change each frame
@@ -242,43 +248,60 @@ def render_time_movie(t_grid, z_grid, r_snapshots, t_snapshots, filename, cam_di
     plotter = pv.Plotter(off_screen=True)
     plotter.enable_anti_aliasing('ssaa')
     plotter.image_scale = image_scale
-    plotter.open_movie(filename)
 
-    for r_snap, t in tqdm(zip(r_snapshots, t_snapshots),
-                          total=len(t_snapshots),
-                          desc="rendering frames"):
-        # r_snap: (n_theta, n_z) in nm
+    if render_movie:
+        plotter.open_movie(filename)
+        iterable = tqdm(
+            zip(r_snapshots, t_snapshots),
+            total=len(t_snapshots),
+            desc="rendering frames"
+        )
+    else:
+        iterable = [(r_snapshots[-1], t_snapshots[-1])]
+        print("Rendering only final frame as image...")
+
+    for r_snap, t in iterable:
         x = r_snap * np.cos(t_grid)
         y = r_snap * np.sin(t_grid)
 
         points = np.column_stack([x.ravel(), y.ravel(), z_nm.ravel()])
         radial = np.sqrt(x**2 + y**2).ravel()
 
-        mesh            = pv.PolyData(points, faces)
-        mesh['radius']  = radial
-        mesh['H']       = (r_snapshots[0] - r_snap).ravel()  # deformation from first frame
+        mesh = pv.PolyData(points, faces)
+        mesh['radius'] = radial
+        mesh['H'] = (r_snapshots[0] - r_snap).ravel()
 
         clipped = mesh.clip(normal=clip_normal, origin=clip_origin, invert=False)
 
         if plotter.actors.get('clipped_mesh_actor'):
             plotter.remove_actor('clipped_mesh_actor')
 
-        plotter.add_mesh(clipped,
-                         name='clipped_mesh_actor',
-                         scalars='radius',
-                         cmap='Purples_r',
-                         smooth_shading=True,
-                         show_scalar_bar=False)
+        plotter.add_mesh(
+            clipped,
+            name='clipped_mesh_actor',
+            scalars='radius',
+            cmap='Purples_r',
+            smooth_shading=True,
+            show_scalar_bar=False
+        )
 
-        # set camera per-frame to prevent pyvista auto-resetting it
-        plotter.camera.position    = cam_dict['position']
+        plotter.camera.position = cam_dict['position']
         plotter.camera.focal_point = cam_dict['focal_point']
-        plotter.camera.up          = cam_dict['view_up']
+        plotter.camera.up = cam_dict['view_up']
 
-        plotter.write_frame()
+        if render_movie:
+            plotter.write_frame()
+
+    if not render_movie:
+        cwd = os.getcwd()
+        outname = cwd.split("/")[-2] + f"_view_{select_view}.png"
+        plotter.screenshot(outname, scale=image_scale)
+        print(f"Saved final frame screenshot: {outname}")
 
     plotter.close()
-    print(f"Movie saved to {filename}")
+
+    if render_movie:
+        print(f"Movie saved to {filename}")
 
 def diam_plot(D, key, ax, modelonly=False, label=None, mdlabel=None, 
               coltharp_color="k", mdcolor=None, normalize_diameter=True, D_0=578):

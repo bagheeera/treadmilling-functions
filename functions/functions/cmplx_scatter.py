@@ -120,6 +120,7 @@ def scatter_fct(
                 's': 20,
                 'label': 'Processive',
                 'plot': True,
+                'alpha': 1,
                 'trace': True,
                 'trace_window': 0,
                 'arrow': False,
@@ -169,7 +170,8 @@ def scatter_fct(
             c=config['color'],
             s=config['s'],
             marker=config['marker'],
-            label=config['label']
+            label=config['label'],
+            alpha=config.get("alpha", 1),
         )
         
         # Trace (previous frames)
@@ -305,6 +307,10 @@ def scatter_fct(
     ax.set_aspect("equal")
     if xlim is None:
         xlim = (df["x"].min() * scale_xy, df["x"].max() * scale_xy)
+        xlim = (df.loc[df["time"] == t_frame]["x"].min() * scale_xy, 
+                df.loc[df["time"] == t_frame]["x"].max() * scale_xy)
+        
+        
     
     ax.set_xlim(*xlim)
     ax.set_ylim(*ylim)
