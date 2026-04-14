@@ -286,7 +286,7 @@ def scatter_fct(
             yvals = D_ql.loc[(np.abs(D_ql["y"]) < abs(ql_config.get('quantile_range', quantile_range)[1]))]["y"] * scale_xy
             for q in quantiles:
                 qv = np.quantile(yvals, q)
-                ax.hlines(qv, xmin=-150*scale_xy, xmax=150*scale_xy,
+                ax.axhline(qv, #xmin=-150*scale_xy, xmax=150*scale_xy,
                           ls=ql_config.get('ls', '--'),
                           lw=1,
                           color=ql_config['color'],
