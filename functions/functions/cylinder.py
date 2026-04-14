@@ -280,20 +280,57 @@ def render_time_movie(t_grid, z_grid, r_snapshots, t_snapshots, filename, cam_di
     plotter.close()
     print(f"Movie saved to {filename}")
 
-def diam_plot(D, key, ax, modelonly=False, label=None, mdlabel=None, coltharp_color="k", mdcolor=None):
-    def d_alpha(t, tau_c, alpha,):
+def diam_plot(D, key, ax, modelonly=False, label=None, mdlabel=None, 
+              coltharp_color="k", mdcolor=None, normalize_diameter=True):
+    """
+    Plot diameter evolution over time.
+    
+    Parameters
+    ----------
+    D : dict
+        Main dictionary with data
+    key : hashable
+        Key to access the data in D
+    ax : matplotlib.axes.Axes
+        Axes object to plot on
+    modelonly : bool, optional
+        If True, only plot the model, not the data (default: False)
+    label : str, optional
+        Label for the model line
+    mdlabel : str, optional
+        Label for the data line
+    coltharp_color : str, optional
+        Color for the model line (default: "k")
+    mdcolor : str, optional
+        Color for the data line
+    normalize_diameter : bool, optional
+        If True, plot diameter/diameter_0 (normalized by initial diameter).
+        If False, plot absolute diameter values (default: True)
+    """
+    import numpy as np
+    
+    def d_alpha(t, tau_c, alpha):
         diam = (1-(t/tau_c)**alpha)**(1/alpha)
         return diam
-    t_model = np.linspace(0,50, 1000)
+    
+    t_model = np.linspace(0, 50, 1000)
     tau_c = 51
     alpha = 1.3
     t, r = np.array(D[key]["t_r"]).T
-    diam_md = r*2*5
-    ax.plot(t/1000/60, diam_md / diam_md[0], lw=3, label=mdlabel, color=mdcolor)
+    diam_md = r * 2 * 5
+    
+    # Normalize or use absolute diameter
+    if normalize_diameter:
+        diam_md_plot = diam_md / diam_md[0]
+    else:
+        diam_md_plot = diam_md
+    
+    ax.plot(t/1000/60, diam_md_plot, lw=3, label=mdlabel, color=mdcolor)
+    
     if not modelonly:
         ax.plot(t_model, d_alpha(t_model, tau_c, alpha),
-            color=coltharp_color,
-            label=label)
+                color=coltharp_color,
+                label=label)
 
 
 
