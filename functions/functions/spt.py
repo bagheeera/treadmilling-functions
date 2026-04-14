@@ -171,7 +171,8 @@ from pathlib import Path
 # from synthana import analysis, utils
 
 
-def plot_msd_alpha(xmlfile, MSD_analysis, ax, color="steelblue", show_filtered=True):
+def plot_msd_alpha(xmlfile, MSD_analysis, ax, color="steelblue", show_filtered=True,
+cmap="viridis", add_inset=True, s_scatter=0.1):
 # 1. Load Data
     df = read_xml(xmlfile)
     ax.set_xlim(df["x"].min(), df["x"].max())
@@ -185,47 +186,48 @@ def plot_msd_alpha(xmlfile, MSD_analysis, ax, color="steelblue", show_filtered=T
         # Filter for IDs that are NOT in the MSD_analysis results
         df_nan = df[df["alpha"].isna()]
         ax.scatter(df_nan["x"], df_nan["y"], 
-                   s=0.1, color="lightgrey", alpha=0.2, 
+                   s=s_scatter, color="lightgrey", alpha=0.2, 
                    zorder=1, rasterized=True)
 
     # 4. Foreground: Plot analyzed traces
     df_valid = df[df["alpha"].notna()]
-    sc = df_scatter(df_valid, ax, s=0.5, colorby="alpha", cmap="viridis", 
+    sc = df_scatter(df_valid, ax, s=0.5, colorby="alpha", cmap=cmap, 
                     vmax=2, vmin=0.8, zorder=2)
     
     # ax.set_title(Path(xmlfile).stem, fontsize=10)
-    
-    # 4. Create Inset (Lower Right Corner)
-    # [x0, y0, width, height] in normalized axis coordinates
-    ax_ins = ax.inset_axes([0.0, 0.05, 0.12, 0.3])
-    ax_ins.grid(axis="y")
+    if add_inset:
+        # 4. Create Inset (Lower Right Corner)
+        # [x0, y0, width, height] in normalized axis coordinates
+        ax_ins = ax.inset_axes([0.0, 0.05, 0.12, 0.3])
+        ax_ins.grid(axis="y")
 
-    # 5. Extract alpha values for distribution
-    alpha_values = alpha_series.dropna().unique()
+        # 5. Extract alpha values for distribution
+        alpha_values = alpha_series.dropna().unique()
     
-    # Plot Distribution in Inset
-    if len(alpha_values) > 0:
-        # Violin Plot
-        parts = ax_ins.violinplot([alpha_values], positions=[0], 
-                                  showmedians=False, showextrema=False)
-        for pc in parts["bodies"]:
-            pc.set_facecolor(color)
-            pc.set_alpha(0.3)
+
+        # Plot Distribution in Inset
+        if len(alpha_values) > 0:
+            # Violin Plot
+            parts = ax_ins.violinplot([alpha_values], positions=[0], 
+                                    showmedians=False, showextrema=False)
+            for pc in parts["bodies"]:
+                pc.set_facecolor(color)
+                pc.set_alpha(0.3)
+            
+            # Boxplot
+            bp = ax_ins.boxplot([alpha_values], positions=[0], 
+                                widths=0.4, patch_artist=True, 
+                                showfliers=False,
+                                medianprops=dict(color="black", linewidth=1.5))
+            bp['boxes'][0].set_facecolor(color)
+            bp['boxes'][0].set_alpha(0.7)
         
-        # Boxplot
-        bp = ax_ins.boxplot([alpha_values], positions=[0], 
-                            widths=0.4, patch_artist=True, 
-                            showfliers=False,
-                            medianprops=dict(color="black", linewidth=1.5))
-        bp['boxes'][0].set_facecolor(color)
-        bp['boxes'][0].set_alpha(0.7)
-    
-    # Clean up inset appearance
-    ax_ins.set_xticks([]) # Hide x-axis ticks
-    ax_ins.set_ylabel(r"$\alpha$", fontsize=8)
-    ax_ins.tick_params(labelsize=7)
-    ax_ins.set_ylim(0.5, 2.5) # Consistent scale for alpha
-    
+        # Clean up inset appearance
+        ax_ins.set_xticks([]) # Hide x-axis ticks
+        ax_ins.set_ylabel(r"$\alpha$", fontsize=8)
+        ax_ins.tick_params(labelsize=7)
+        ax_ins.set_ylim(0.5, 2.5) # Consistent scale for alpha
+        
     return sc
 
 
