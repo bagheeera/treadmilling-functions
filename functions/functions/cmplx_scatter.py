@@ -7,6 +7,11 @@ import numpy as np
 import pandas as pd
 
 
+from matplotlib.lines import Line2D
+import numpy as np
+import pandas as pd
+
+
 def scatter_fct(
     df,
     ax,
@@ -26,9 +31,9 @@ def scatter_fct(
     xlim=None,
     ylim=(-150, 150),
     
-    # quantile lines for type6
+    # quantile lines
     show_quantiles=True,
-    quantile_lines=None,  # {type: [...]} or None
+    quantile_lines=None,
     quantile_range=(-30, 30),
     quantiles=(0.2, 0.8),
     
@@ -40,52 +45,27 @@ def scatter_fct(
     hideticklabels=True,
     xlabel="Cell circumference (nm)",
     ylabel="Long cell axis (nm)",
+    
+    # histogram options
+    histogram_config=None,
+    histogram_axis=None,
+    histogram_bins=30,
+    histogram_range=None,
 ):
     """
-    Flexible scatter plot for one time frame.
+    Flexible scatter plot with optional histogram.
     
-    Parameters
-    ----------
-    particle_config : dict or None
-        Configuration for particle types to display. If None, uses default config.
-        Structure:
-        {
-            'type_id_or_name': {
-                'types': [1, 2, 3],                  # particle type IDs to include
-                'color': '#4cc9f0',
-                'marker': 'o',
-                's': 10,                              # marker size
-                'label': 'FtsZ',
-                'plot': True,                         # whether to plot this type
-                'trace': False,                       # whether to show trace
-                'trace_window': 0,                    # number of previous frames
-                'arrow': False,                       # whether to plot arrows
-                'arrow_orientation': None,            # function(particle) -> angle or (dx, dy)
-                'arrow_length': 50,                   # arrow length in pixels
-                'arrow_width': 0.5,                   # arrow shaft width
-                'arrow_head_width': 5,                # arrow head width
-                'arrow_head_length': 5,               # arrow head length
-            },
-            ...
-        }
-        
-        Arrow orientation function signature:
-            def arrow_orientation(particle: pd.Series, df: pd.DataFrame, t_frame: int):
-                return angle_in_degrees  # or (dx, dy) tuple
-                # Returns None if no arrow for this particle
-        
-    quantile_lines : dict or None
-        Configuration for quantile lines per particle type:
-        {
-            'type_name': {
-                'types': [5, 6],
-                'color': '#f72585',
-                'axis': 'y',           # 'x' or 'y'
-                'alpha': 0.7,
-                'ls': '--',
-            },
-            ...
-        }
+    histogram_config : list of dict or None
+        [
+            {'types': [1,2,3], 'color': '#4cc9f0', 'label': 'FtsZ'},
+            {'types': [5,6], 'color': '#f72585', 'label': 'Synthase'},
+        ]
+    histogram_axis : matplotlib axis or None
+        If provided, plot histograms on this axis
+    histogram_bins : int
+        Number of bins for histogram
+    histogram_range : tuple (min, max) or None
+        Y-range for histogram filtering (default: quantile_range)
     """
     
     # --- Default configuration ---
@@ -150,6 +130,9 @@ def scatter_fct(
             }
         }
     
+    if histogram_range is None:
+        histogram_range = quantile_range
+    
     # --- Extract frame ---
     D = df.loc[df["time"] == t_frame]
     
@@ -198,7 +181,7 @@ def scatter_fct(
             continue
         
         arrow_orientation_func = config.get('arrow_orientation')
-        arrow_length = config.get('arrow_length', 50)  # pixels
+        arrow_length = config.get('arrow_length', 50)
         arrow_width = config.get('arrow_width', 0.5)
         arrow_head_width = config.get('arrow_head_width', 5)
         arrow_head_length = config.get('arrow_head_length', 5)
@@ -218,21 +201,15 @@ def scatter_fct(
             if orientation is None:
                 continue
             
-            # Handle unexpected DataFrame returns (defensive check)
             if isinstance(orientation, pd.DataFrame):
                 print(f"Warning: arrow_orientation returned DataFrame instead of angle/tuple")
-                print(f"  DataFrame shape: {orientation.shape}")
-                print(f"  Columns: {list(orientation.columns)}")
                 continue
             
-            # orientation should be angle in degrees or (dx, dy) tuple
             if isinstance(orientation, (tuple, list)) and len(orientation) == 2:
-                # (dx, dy) format - normalize to length
                 try:
                     dx = float(orientation[0])
                     dy = float(orientation[1])
-                except (ValueError, TypeError) as e:
-                    print(f"Warning: Could not convert orientation {orientation} to floats: {e}")
+                except (ValueError, TypeError):
                     continue
                 
                 magnitude = np.sqrt(dx**2 + dy**2)
@@ -242,13 +219,11 @@ def scatter_fct(
                 else:
                     continue
             else:
-                # Assume angle in degrees
                 try:
                     angle_rad = np.radians(float(orientation))
                     dx = arrow_length * np.cos(angle_rad)
                     dy = arrow_length * np.sin(angle_rad)
-                except (ValueError, TypeError) as e:
-                    print(f"Warning: Could not convert orientation {orientation} to angle: {e}")
+                except (ValueError, TypeError):
                     continue
             
             ax.arrow(
@@ -283,34 +258,26 @@ def scatter_fct(
         
         axis = ql_config.get('axis', 'y')
         
-        # Filter by quantile range and get values
         if axis == 'y':
             yvals = D_ql.loc[(np.abs(D_ql["y"]) < abs(ql_config.get('quantile_range', quantile_range)[1]))]["y"] * scale_xy
             for q in quantiles:
                 qv = np.quantile(yvals, q)
-                ax.axhline(qv, #xmin=-150*scale_xy, xmax=150*scale_xy,
-                          ls=ql_config.get('ls', '--'),
-                          lw=1,
-                          color=ql_config['color'],
+                ax.axhline(qv, ls=ql_config.get('ls', '--'),
+                          lw=1, color=ql_config['color'],
                           alpha=ql_config.get('alpha', 0.7))
         elif axis == 'x':
             xvals = D_ql.loc[(np.abs(D_ql["x"]) < abs(ql_config.get('quantile_range', quantile_range)[1]))]["x"] * scale_xy
             for q in quantiles:
                 qv = np.quantile(xvals, q)
-                ax.vlines(qv, ymin=-150*scale_xy, ymax=150*scale_xy,
-                          ls=ql_config.get('ls', '--'),
-                          lw=1,
-                          color=ql_config['color'],
+                ax.axvline(qv, ls=ql_config.get('ls', '--'),
+                          lw=1, color=ql_config['color'],
                           alpha=ql_config.get('alpha', 0.7))
     
     # --- Axes ---
     ax.set_aspect("equal")
     if xlim is None:
-        xlim = (df["x"].min() * scale_xy, df["x"].max() * scale_xy)
         xlim = (df.loc[df["time"] == t_frame]["x"].min() * scale_xy, 
                 df.loc[df["time"] == t_frame]["x"].max() * scale_xy)
-        
-        
     
     ax.set_xlim(*xlim)
     ax.set_ylim(*ylim)
@@ -318,16 +285,12 @@ def scatter_fct(
     if hideticklabels:
         ax.set_xticks([])
         ax.set_yticks([])
-    # else:
-    #     ax.set_xlabel(xlabel)
-    #     ax.set_ylabel(ylabel)
     
     # --- Legend ---
     if display_legend:
         handles = []
         for config_name, config in particle_config.items():
             if config.get('plot', True):
-                # Use legend_markersize if specified, otherwise scale from s
                 legend_size = config.get('legend_markersize', np.sqrt(config['s']))
                 handles.append(Line2D([0], [0],
                                       label=config['label'],
@@ -342,6 +305,36 @@ def scatter_fct(
                       loc=legend_loc,
                       ncol=legend_ncol,
                       frameon=True)
+    
+    # --- Histograms ---
+    if histogram_axis is not None and histogram_config is not None:
+        for hist_cfg in histogram_config:
+            hist_types = hist_cfg['types']
+            hist_color = hist_cfg['color']
+            hist_label = hist_cfg['label']
+            display_hist_legend = hist_cfg.get('display_legend', True)
+            
+            df_hist = df[(df["type"].isin(hist_types)) & (df["time"] == t_frame)]
+            df_hist = df_hist[df_hist["y"].between(histogram_range[0], histogram_range[1])]
+            
+            if not df_hist.empty:
+                histogram_axis.hist(
+                    df_hist["y"] * scale_xy,
+                    bins=histogram_bins,
+                    histtype="step",
+                    color=hist_color,
+                    lw=2,
+                    density=True,
+                    alpha=0.7,
+                    orientation="horizontal",
+                    label=hist_label
+                )
+        
+        histogram_axis.set_xlabel("Density")
+        if display_hist_legend:
+            histogram_axis.legend()
+        histogram_axis.set_ylim(ax.get_ylim())
+        histogram_axis.set_aspect('auto')
     
     return ax
 
