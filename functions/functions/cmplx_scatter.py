@@ -484,3 +484,195 @@ def make_arrow_orientation_bidirectional(
         return (dx, dy)
     
     return arrow_orientation
+
+
+
+import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
+import numpy as np
+from moviepy.editor import VideoClip
+from moviepy.video.io.bindings import mplfig_to_npimage
+# from fct.cmplx_scatter import scatter_fct
+
+
+def render_movie_with_hist(
+    df,
+    tag,
+    particle_config=None,
+    histogram_config=None,
+    duration=10,
+    fps=30,
+    dpi=150,
+    ylim=(-150, 150), 
+    histogram_bins=30,
+    histogram_range=None,
+    width_ratios=(3, 1),
+    wspace=0.05,
+    height_scale=0.45,
+    t_window=3,
+    hist_xlim=0.021,
+    display_time=True,
+    display_legend=True,
+    xlim=(-200,200),
+    figsize=(12, 5),
+):
+    """
+    Render animation with scatter plot and histograms using scatter_fct.
+    
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Data with columns: time, x, y, type, etc.
+    tag : str
+        Output filename (without .mp4)
+    particle_config : dict or None
+        Particle type configuration (passed to scatter_fct)
+    histogram_config : list or None
+        Histogram configuration: [{'types': [...], 'color': '...', 'label': '...'}, ...]
+    duration : float
+        Video duration in seconds
+    fps : int
+        Frames per second
+    dpi : int
+        Figure DPI
+    ylim : tuple
+        Y-axis limits (min, max)
+    histogram_bins : int
+        Number of histogram bins
+    histogram_range : tuple or None
+        Y-range for histogram filtering (default: use ylim)
+    width_ratios : tuple
+        Width ratio of scatter to histogram (e.g., (3, 1))
+    wspace : float
+        Space between subplots
+    height_scale : float
+        Height of histogram as fraction of scatter height (0-1)
+    t_window : float
+        Half-width of time window for histogram
+    hist_xlim : float
+        X-axis limit for histogram (density)
+    display_time : bool
+        Show time text
+    display_legend : bool
+        Show legend
+    """
+    
+    if histogram_range is None:
+        histogram_range = ylim
+    
+    # Default configs
+    if particle_config is None:
+        particle_config = {
+            'filaments': {
+                'types': [1, 2, 3],
+                'color': '#4cc9f0',
+                'marker': 'o',
+                's': 10,
+                'label': 'FtsZ',
+                'plot': True,
+            },
+            'synthase': {
+                'types': [5, 6],
+                'color': '#f72585',
+                'marker': 's',
+                's': 20,
+                'label': 'Synthase',
+                'plot': True,
+            },
+        }
+    
+    if histogram_config is None:
+        histogram_config = [
+            {'types': [5, 6], 'color': '#f72585', 'label': 'Synthase'},
+            {'types': [1, 2, 3], 'color': '#4cc9f0', 'label': 'FtsZ'},
+        ]
+    
+    plt.rcParams["figure.dpi"] = dpi
+    T_tot = df["time"].values[-1]
+    scale_xy = 5
+    
+    # --- Figure layout with gridspec ---
+    fig = plt.figure(figsize=figsize, constrained_layout=False)
+    gs = gridspec.GridSpec(1, 2, width_ratios=width_ratios, wspace=wspace, figure=fig)
+    ax_scatter = fig.add_subplot(gs[0, 0])
+    ax_hist = fig.add_subplot(gs[0, 1], sharey=ax_scatter)
+
+    def clear_ax_artists(ax):
+        """Remove all plotted graphics (scatter, lines, quivers, arrows, etc.) but keep axes labels & limits."""
+        for coll in list(ax.collections):
+            coll.remove()
+        for ln in list(ax.lines):
+            ln.remove()
+        for p in list(ax.patches):   # FancyArrows / rectangles / etc.
+            p.remove()
+        for txt in list(ax.texts):
+            if "t =" in txt.get_text():
+                # optional: keep time text or not
+                txt.remove()
+            else:
+                txt.remove()
+    
+    def make_frame(t_video):
+        # Map video time to data time
+        t_data = int(T_tot * t_video / duration)
+        
+        # Find nearest time in data
+        closest_time = df["time"].values[np.abs(df["time"].values - t_data).argmin()]
+        
+        # Clear axes
+        # ax_scatter.clear()
+        # Instead of ax.clear(), wipe artists manually:
+        # for c in ax_scatter.collections: c.remove()
+        # for l in ax_scatter.lines: l.remove()
+        # for t in ax_scatter.texts: t.remove()
+        # ax_hist.clear()
+        clear_ax_artists(ax_scatter)
+        clear_ax_artists(ax_hist)
+        
+        # Plot scatter with histograms
+        scatter_fct(
+            df,
+            ax_scatter,
+            closest_time,
+            particle_config=particle_config,
+            display_time=display_time,
+            display_legend=display_legend,
+            scale_xy=scale_xy,
+            ylim=ylim,
+            show_quantiles=False,
+            hideticklabels=False,
+            histogram_axis=ax_hist,
+            histogram_config=histogram_config,
+            histogram_bins=histogram_bins,
+            histogram_range=histogram_range,
+            xlim=xlim,
+        )
+        
+        # Customize histogram axis
+        ax_hist.set_xlim(0, hist_xlim)
+        ax_hist.set_xticklabels([])
+        ax_hist.set_yticks([])
+        ax_hist.set_xlabel("Density")
+        ax_hist.set_aspect('auto')
+        
+        # Customize scatter axis
+        ax_scatter.set_xlabel("Cell circumference (nm)")
+        ax_scatter.set_ylabel("Long cell axis (nm)")
+        
+        # Update time text if enabled
+        if display_time:
+            # Time text already added by scatter_fct, but we can override
+            for text in ax_scatter.texts:
+                if "t =" in text.get_text():
+                    text.remove()
+            ax_scatter.text(0.8, 0.9, f"t = {closest_time:.0f} s",
+                          transform=ax_scatter.transAxes,
+                          ha="center", va="center",
+                          bbox=dict(facecolor="white", alpha=0.8, edgecolor="white"))
+        
+        fig.canvas.draw_idle()
+        return mplfig_to_npimage(fig)
+    
+    # Create and write video
+    animation = VideoClip(make_frame, duration=duration)
+    animation.write_videofile(f"{tag}.mp4", fps=fps, codec="libx264", audio=False)
