@@ -51,6 +51,7 @@ def scatter_fct(
     histogram_axis=None,
     histogram_bins=30,
     histogram_range=None,
+    hist_timeavg_range=None,
 ):
     """
     Flexible scatter plot with optional histogram.
@@ -307,16 +308,30 @@ def scatter_fct(
                       frameon=True)
     
     # --- Histograms ---
+    # --- Histograms ---
     if histogram_axis is not None and histogram_config is not None:
         for hist_cfg in histogram_config:
             hist_types = hist_cfg['types']
             hist_color = hist_cfg['color']
             hist_label = hist_cfg['label']
             display_hist_legend = hist_cfg.get('display_legend', True)
-            
-            df_hist = df[(df["type"].isin(hist_types)) & (df["time"] == t_frame)]
+
+            # --- NEW: Allow time averaging over a defined range ---
+            if hist_timeavg_range is not None and len(hist_timeavg_range) == 2:
+                t_start, t_end = hist_timeavg_range
+                df_hist = df[
+                    (df["type"].isin(hist_types)) &
+                    (df["time"].between(t_start, t_end))
+                ]
+            else:
+                # Regular single time frame
+                df_hist = df[
+                    (df["type"].isin(hist_types)) &
+                    (df["time"] == t_frame)
+                ]
+                
+            # Restrict y to desired range
             df_hist = df_hist[df_hist["y"].between(histogram_range[0], histogram_range[1])]
-            
             if not df_hist.empty:
                 histogram_axis.hist(
                     df_hist["y"] * scale_xy,
@@ -329,8 +344,10 @@ def scatter_fct(
                     orientation="horizontal",
                     label=hist_label
                 )
-        
+
         histogram_axis.set_xlabel("Density")
+        histogram_axis.set_yticks([])
+        histogram_axis.set_yticklabels([])
         if display_hist_legend:
             histogram_axis.legend()
         histogram_axis.set_ylim(ax.get_ylim())
@@ -490,8 +507,7 @@ def make_arrow_orientation_bidirectional(
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 import numpy as np
-from moviepy.editor import VideoClip
-from moviepy.video.io.bindings import mplfig_to_npimage
+
 # from fct.cmplx_scatter import scatter_fct
 
 
@@ -506,6 +522,7 @@ def render_movie_with_hist(
     ylim=(-150, 150), 
     histogram_bins=30,
     histogram_range=None,
+    hist_timeavg_range=None,
     width_ratios=(3, 1),
     wspace=0.05,
     height_scale=0.45,
@@ -556,7 +573,8 @@ def render_movie_with_hist(
     display_legend : bool
         Show legend
     """
-    
+    from moviepy.editor import VideoClip
+    from moviepy.video.io.bindings import mplfig_to_npimage
     if histogram_range is None:
         histogram_range = ylim
     
