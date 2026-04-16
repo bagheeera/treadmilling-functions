@@ -190,7 +190,7 @@ def generate_configuration(Lx, n_synthases, run_dir, add_grid=True, initial_synt
         else:
             print(f"Configuration file already exists in {run_dir}. Overwriting as requested.")
 
-    DEFAULT_MASSDICT = {i: 1 for i in range(1, 15)}
+    DEFAULT_MASSDICT = {i: 1 for i in range(1, 20)}
 
     if massdict is None:
         massdict = {

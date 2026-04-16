@@ -303,59 +303,88 @@ def render_time_movie(
     if render_movie:
         print(f"Movie saved to {filename}")
 
-def diam_plot(D, key, ax, modelonly=False, label=None, mdlabel=None, 
-              coltharp_color="k", mdcolor=None, normalize_diameter=True, D_0=578):
+import numpy as np
+import matplotlib.pyplot as plt
+
+def diam_plot(
+    D, key, ax, modelonly=False, label=None, mdlabel=None,
+    coltharp_color="k", mdcolor=None, normalize_diameter=True,
+    display_radius=False, D_0=578
+):
     """
-    Plot diameter evolution over time.
-    
+    Plot diameter (default) or radius evolution over time.
+
     Parameters
     ----------
     D : dict
-        Main dictionary with data
+        Main dictionary with data. Must contain "t_r" -> [time, radius] pairs.
     key : hashable
-        Key to access the data in D
+        Key to access the data in D.
     ax : matplotlib.axes.Axes
-        Axes object to plot on
+        Axes object to plot on.
     modelonly : bool, optional
-        If True, only plot the model, not the data (default: False)
+        If True, only plot the model, not the data (default: False).
     label : str, optional
-        Label for the model line
+        Label for the model line.
     mdlabel : str, optional
-        Label for the data line
+        Label for the data line.
     coltharp_color : str, optional
-        Color for the model line (default: "k")
+        Color for the model line (default: "k").
     mdcolor : str, optional
-        Color for the data line
+        Color for the data line.
     normalize_diameter : bool, optional
-        If True, plot diameter/diameter_0. If False, plot absolute diameter in nm (default: True)
+        If True, plot (diameter or radius)/(initial value).
+        If False, plot the absolute value (default: True).
+    display_radius : bool, optional
+        If True, plot radius instead of diameter (default: False).
     D_0 : float, optional
-        Initial diameter in nm, used when normalize_diameter=False (default: 578 based on Coltharp 2026)
+        Initial diameter in nm, used when normalize_diameter=False (default: 578).
     """
-    import numpy as np
-    
+
     def d_alpha(t, tau_c, alpha):
-        diam = (1-(t/tau_c)**alpha)**(1/alpha)
-        return diam
-    
+        """Model for diameter evolution over time."""
+        diam_norm = (1 - (t / tau_c) ** alpha) ** (1 / alpha)
+        return diam_norm
+
+    # Model parameters
     t_model = np.linspace(0, 50, 1000)
     tau_c = 51
     alpha = 1.3
+
+    # Extract data
     t, r = np.array(D[key]["t_r"]).T
-    diam_md = r * 2 * 5
-    
-    if normalize_diameter:
-        diam_md_plot = diam_md / diam_md[0]
-        diam_model = d_alpha(t_model, tau_c, alpha)
+
+    # Calculate diameter from radius (or just keep radius)
+    if display_radius:
+        val_md = r
+        val_name = "Radius"
+        val_0 = D_0 / 2
     else:
-        diam_md_plot = diam_md
-        diam_model = d_alpha(t_model, tau_c, alpha) * D_0
-    
-    ax.plot(t/1000/60, diam_md_plot, lw=3, label=mdlabel, color=mdcolor)
-    
+        val_md = r * 2
+        val_name = "Diameter"
+        val_0 = D_0
+
+    # Normalize or keep absolute scale
+    if normalize_diameter:
+        val_md_plot = val_md / val_md[0]
+        val_model = d_alpha(t_model, tau_c, alpha)
+        ylabel = f"Normalized {val_name}"
+    else:
+        val_md_plot = val_md
+        val_model = d_alpha(t_model, tau_c, alpha) * val_0
+        ylabel = f"{val_name} (nm)"
+
+    # Plot data
     if not modelonly:
-        ax.plot(t_model, diam_model,
-                color=coltharp_color,
-                label=label)
+        ax.plot(t / 1000 / 60, val_md_plot, lw=3, label=mdlabel, color=mdcolor)
+
+    # Plot model
+    ax.plot(t_model, val_model, color=coltharp_color, label=label)
+
+    ax.set_xlabel("Time (min)")
+    ax.set_ylabel(ylabel)
+    ax.legend()
+
 
 
 
