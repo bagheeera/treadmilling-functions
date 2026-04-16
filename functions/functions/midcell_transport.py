@@ -1025,3 +1025,66 @@ def absy_plot(D, key, ax, synthtype=[12], overlay=None, prm=None):
         # ax.set_title(f"n={len(all_series)} seeds")
 
     ax.legend()
+
+import numpy as np
+import pandas as pd
+
+def compute_synth_absy(df, synthtype, yconsider, keep_types_separate=True):
+    """
+    Compute absolute y-values and optionally their means by time and type.
+    
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input DataFrame containing at least ["time", "type", "y"] columns.
+    synthtype : list
+        List of types to include in the computation.
+    yconsider : float
+        The y-value range for filtering (±yconsider).
+    keep_types_separate : bool, default True
+        If True, computes means grouped by time and type.
+        If False, collects individual abs(y) values for each time step.
+    
+    Returns
+    -------
+    synth_absy_full : pd.DataFrame
+        DataFrame containing absolute values of y by time (and type if applicable).
+    synth_means : pd.DataFrame or None
+        DataFrame containing mean absolute y-values by time and type, or None if not computed.
+    """
+    
+    if keep_types_separate:
+        # 1. Filter once
+        mask = (
+            (df["type"].isin(synthtype)) &
+            (df["y"].between(-yconsider, yconsider))
+        )
+        subset = df[mask].copy()
+
+        # 2. Compute absolute values
+        subset["absy"] = subset["y"].abs()
+
+        # 3. Group by both 'time' and 'type' to get the mean
+        synth_means = subset.groupby(["time", "type"])["absy"].mean().reset_index()
+
+        # Return both the full absolute values and the means
+        synth_absy_full = subset[["time", "type", "absy"]]
+
+    else:
+        # Generate time range
+        trange = np.arange(0, int(df["time"].values[-1]) + 20, 20)
+
+        records = []
+        for t in trange:
+            tmp = df.loc[
+                (df["type"].isin(synthtype)) &
+                (df["y"].between(-yconsider, yconsider)) &
+                (df["time"] == t)
+            ]
+            for val in tmp["y"].abs().values:
+                records.append({"time": t, "absy": val})
+
+        synth_absy_full = pd.DataFrame(records)
+        synth_means = None
+
+    return synth_absy_full, synth_means
