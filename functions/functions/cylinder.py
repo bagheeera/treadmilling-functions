@@ -306,55 +306,85 @@ def render_time_movie(
 import numpy as np
 import matplotlib.pyplot as plt
 
+import numpy as np
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+
+def d_alpha(t, tau_c, alpha):
+    """Model for diameter (or radius) evolution over time."""
+    return (1 - (t / tau_c) ** alpha) ** (1 / alpha)
+
 def diam_plot(
-    D, key, ax, modelonly=False, label=None, mdlabel=None,
-    coltharp_color="k", mdcolor=None, normalize_diameter=True,
-    display_radius=False, D_0=578
+    D,
+    key,
+    ax,
+    modelonly=False,
+    label=None,
+    mdlabel=None,
+    overlay=None,
+    coltharp_color="k",
+    mdcolor=None,
+    normalize_diameter=True,
+    display_radius=False,
+    D_0=578,
+    # inset / overlay options
+    inset=True,
+    axislabels=True,
+    width="45%",
+    height="45%",
+    legendtitle=None,
+    coltharp_label=None,
+    ncol=1,
+    pgt=None,  # optional, if you have pgt.strand_thickness_width
+    z_range_tuple=(-370, 370)
 ):
     """
-    Plot diameter (default) or radius evolution over time.
+    Plot diameter (default) or radius evolution over time, with optional inset
+    showing avg septum height (H_total).
 
     Parameters
     ----------
     D : dict
-        Main dictionary with data. Must contain "t_r" -> [time, radius] pairs.
+        Dict containing at least D[key]["t_r"], optionally D[key]["H_total"].
     key : hashable
-        Key to access the data in D.
+        Dataset key.
     ax : matplotlib.axes.Axes
-        Axes object to plot on.
-    modelonly : bool, optional
-        If True, only plot the model, not the data (default: False).
-    label : str, optional
-        Label for the model line.
-    mdlabel : str, optional
-        Label for the data line.
-    coltharp_color : str, optional
-        Color for the model line (default: "k").
-    mdcolor : str, optional
-        Color for the data line.
-    normalize_diameter : bool, optional
-        If True, plot (diameter or radius)/(initial value).
-        If False, plot the absolute value (default: True).
-    display_radius : bool, optional
-        If True, plot radius instead of diameter (default: False).
-    D_0 : float, optional
-        Initial diameter in nm, used when normalize_diameter=False (default: 578).
+        Axes to plot on.
+    modelonly : bool
+        If True, only plot model curve.
+    label, mdlabel : str
+        Labels for model and measurement lines.
+    overlay : str
+        Label for overlay data (for inset, optional).
+    coltharp_color : str
+        Model line color.
+    mdcolor : str
+        Measurement/overlay line color.
+    normalize_diameter : bool
+        If True, normalize by initial value.
+    display_radius : bool
+        If True, plot radius instead of diameter.
+    D_0 : float
+        Reference (initial) diameter (nm) for unnormalized plots.
+    inset : bool
+        If True, show inset plot of H_total if available.
+    axislabels : bool
+        If True, draw x/y labels.
+    width, height : str or float
+        Inset dimensions.
+    legendtitle, coltharp_label : str
+        Legend customization.
+    ncol : int
+        Number of legend columns.
+    pgt : module or None
+        Module providing pgt.strand_thickness_width, if using inset.
+    z_range_tuple : tuple
+        Range for inset x-axis (nm units).
     """
 
-    def d_alpha(t, tau_c, alpha):
-        """Model for diameter evolution over time."""
-        diam_norm = (1 - (t / tau_c) ** alpha) ** (1 / alpha)
-        return diam_norm
-
-    # Model parameters
-    t_model = np.linspace(0, 50, 1000)
-    tau_c = 51
-    alpha = 1.3
-
+    # ---------------------------
     # Extract data
-    t, r = np.array(D[key]["t_r"]).T
-
-    # Calculate diameter from radius (or just keep radius)
+    # ---------------------------
+    t, r = np.array(D[key]["t_r"]).T  # time (ms?), radius (nm)
     if display_radius:
         val_md = r
         val_name = "Radius"
@@ -364,26 +394,66 @@ def diam_plot(
         val_name = "Diameter"
         val_0 = D_0
 
-    # Normalize or keep absolute scale
+    # ---------------------------
+    # Model curve parameters
+    # ---------------------------
+    t_model = np.linspace(0, np.max(t) / 1000 / 60 * 1.2, 1000)  # min scale
+    tau_c, alpha = 51, 1.3
+
+    # ---------------------------
+    # Compute model and normalize
+    # ---------------------------
     if normalize_diameter:
         val_md_plot = val_md / val_md[0]
-        val_model = d_alpha(t_model, tau_c, alpha)
+        val_model = d_alpha(t_model * 1000 * 60, tau_c, alpha)
         ylabel = f"Normalized {val_name}"
     else:
         val_md_plot = val_md
-        val_model = d_alpha(t_model, tau_c, alpha) * val_0
+        val_model = d_alpha(t_model * 1000 * 60, tau_c, alpha) * val_0
         ylabel = f"{val_name} (nm)"
 
-    # Plot data
+    # ---------------------------
+    # Plot measured data
+    # ---------------------------
     if not modelonly:
-        ax.plot(t / 1000 / 60, val_md_plot, lw=3, label=mdlabel, color=mdcolor)
+        ax.plot(t / 1000 / 60, val_md_plot, lw=3, label=mdlabel or overlay, color=mdcolor)
 
-    # Plot model
-    ax.plot(t_model, val_model, color=coltharp_color, label=label)
+    # ---------------------------
+    # Plot model curve
+    # ---------------------------
+    ax.plot(t_model, val_model, color=coltharp_color, label=label or coltharp_label, ls="--")
 
-    ax.set_xlabel("Time (min)")
-    ax.set_ylabel(ylabel)
-    ax.legend()
+    # ---------------------------
+    # Axis labels and legend
+    # ---------------------------
+    if axislabels:
+        ax.set_xlabel("Time (min)")
+        ax.set_ylabel(ylabel)
+    ax.legend(loc="upper right", fontsize=8, title=legendtitle, ncol=ncol)
+
+    # ---------------------------
+    # Optional inset for H_total
+    # ---------------------------
+    if inset and "H_total" in D[key]:
+        if not hasattr(ax, "my_inset"):
+            ax.my_inset = inset_axes(ax, width=width, height=height, loc="lower left", borderpad=4)
+        ax_ins = ax.my_inset
+
+        # Data processing
+        z_min, z_max = z_range_tuple
+        strand_width_su = getattr(pgt, "strand_thickness_width", 5.0) / 5.0
+        z_edges = np.arange(z_min, z_max + strand_width_su, strand_width_su)
+        z_centers = (z_edges[:-1] + z_edges[1:]) / 2
+        z_nm = z_centers * 5.0
+
+        ax_ins.plot(z_nm, D[key]["H_total"].mean(axis=0), label=overlay)
+        ax_ins.set_xlim(-300, 300)
+        if axislabels:
+            ax_ins.set_xlabel("Long cell axis (nm)", fontsize=7)
+            ax_ins.set_ylabel("Septum height (nm)", fontsize=7)
+        # ax_ins.legend(fontsize=7)
+
+    return ax
 
 
 
