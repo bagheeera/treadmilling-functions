@@ -397,7 +397,9 @@ def diam_plot(
     # ---------------------------
     # Model curve parameters
     # ---------------------------
-    t_model = np.linspace(0, np.max(t) / 1000 / 60 * 1.2, 1000)  # min scale
+    # t_model = np.linspace(0, np.max(t) / 1000 / 60 * 1.2, 1000)  # min scale
+    t_model = np.linspace(0, 50, 1000)  # safe range
+
     tau_c, alpha = 51, 1.3
 
     # ---------------------------
@@ -406,10 +408,12 @@ def diam_plot(
     if normalize_diameter:
         val_md_plot = val_md / val_md[0]
         val_model = d_alpha(t_model * 1000 * 60, tau_c, alpha)
+        val_model = d_alpha(t_model, tau_c, alpha)  # t_model already in minutes
         ylabel = f"Normalized {val_name}"
     else:
         val_md_plot = val_md
         val_model = d_alpha(t_model * 1000 * 60, tau_c, alpha) * val_0
+        val_model = d_alpha(t_model, tau_c, alpha)  # t_model already in minutes
         ylabel = f"{val_name} (nm)"
 
     # ---------------------------
@@ -720,3 +724,132 @@ def circularity_analysis_full(D, key):
     )
     # This returns a dict like {'RMS Roughness (nm)': 0.5, 'Circularity': 0.8, ...}
     return fct.cylinder.analyze_circularity_centered(H_blurred, R_nm)
+
+
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+import numpy as np
+
+def d_alpha(t, tau_c, alpha):
+    """Coltharp model for normalized diameter/radius evolution."""
+    return (1 - (t / tau_c) ** alpha) ** (1 / alpha)
+
+def front_render_display(
+    D,
+    key,
+    ax,
+    label="front",
+    crop=(300, -100, 500, -500),
+    show_inset=False,
+    inset_width="40%",
+    inset_height="40%",
+    inset_loc="center left",
+    overlay=None,
+    mdcolor="tab:blue",
+    coltharp_color="k",
+    coltharp_label="Coltharp model",
+    normalize=True,
+    display_radius=False,
+    modelonly=False,
+):
+    """
+    Display the septum 'front' PNG and optionally an inset plot showing the 
+    measured diameter/radius evolution with Coltharp model overlay.
+
+    Parameters
+    ----------
+    D : dict
+        Dictionary containing at least D[key]["rundir"] and D[key]["t_r"].
+    key : hashable
+        Dataset key.
+    ax : matplotlib.axes.Axes
+        Axis to render into.
+    label : str
+        Image label (default 'front').
+    crop : tuple
+        Crop window passed to display_png.
+    show_inset : bool
+        If True, include an inset showing time evolution.
+    inset_width, inset_height : str or float
+        Size of inset in parent axes units.
+    inset_loc : str
+        Position of inset (e.g., 'lower left').
+    overlay : str
+        Label for inset line (data/measurement).
+    mdcolor : str
+        Color for measurement line.
+    coltharp_color : str
+        Color for model line.
+    coltharp_label : str
+        Legend label for model line.
+    normalize : bool
+        If True, normalize D(t)/D(t₀).
+    display_radius : bool
+        If True, plot radius instead of diameter.
+    modelonly : bool
+        If True, only plot model in inset (no measured data).
+    """
+
+    # ---------------------------------------------------------
+    # 1. Display PNG image
+    # ---------------------------------------------------------
+    rundir = D[key]["rundir"]
+    fname = f"{rundir}/{rundir.split('/')[-2]}septum_{label}.png"
+    fct.midcell_transport.display_png(fname, ax, crop=crop)
+
+    # ---------------------------------------------------------
+    # 2. Optional inset plot
+    # ---------------------------------------------------------
+    if show_inset and "t_r" in D[key]:
+        if not hasattr(ax, "my_inset"):
+            ax.my_inset = inset_axes(
+                ax,
+                width=inset_width,
+                height=inset_height,
+                loc=inset_loc,
+                borderpad=1,
+            )
+        ax_ins = ax.my_inset
+
+        # Extract and process data
+        t, r = np.array(D[key]["t_r"]).T  # expects ms and nm
+        val_md = r if display_radius else r * 2  # radius–>diameter
+        val_md_plot = val_md / val_md[0] if normalize else val_md
+
+        # Data line (if not model-only)
+        if not modelonly:
+            ax_ins.plot(
+                t / 1000 / 60,
+                val_md_plot,
+                lw=3,
+                label=overlay,
+                color=mdcolor,
+            )
+
+        # Model line (Coltharp)
+        tau_c, alpha = 51, 1.3
+        # t_model = np.linspace(0, np.max(t) / 1000 / 60 * 1.1, 500)
+        t_model = np.linspace(0, 50, 1000)  # safe range
+
+        val_model = d_alpha(t_model * 1000 * 60, tau_c, alpha)
+        val_model = d_alpha(t_model, tau_c, alpha)  # t_model already in minutes
+
+        if not normalize:
+            val_model *= val_md[0]
+        # print(t_model[:5], val_model[:5])  # sanity check first few values
+        ax_ins.plot(
+            t_model,
+            val_model,
+            color=coltharp_color,
+            ls="--",
+            label=coltharp_label,
+        )
+
+        # Inset formatting
+        ax_ins.set_xlabel("Time (min)", fontsize=7)
+        # ax_ins.set_ylabel(
+        #     r"$D/D_0$" if normalize else "Diameter (nm)", fontsize=7
+        # )
+        ax_ins.tick_params(axis="both", labelsize=7)
+        # ax_ins.legend(fontsize=6, loc="best")
+
+    return ax
