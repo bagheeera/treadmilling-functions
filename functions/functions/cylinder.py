@@ -313,6 +313,10 @@ def d_alpha(t, tau_c, alpha):
     """Model for diameter (or radius) evolution over time."""
     return (1 - (t / tau_c) ** alpha) ** (1 / alpha)
 
+import numpy as np
+import matplotlib.pyplot as plt
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+
 def diam_plot(
     D,
     key,
@@ -335,12 +339,15 @@ def diam_plot(
     coltharp_label=None,
     ncol=1,
     pgt=None,  # optional, if you have pgt.strand_thickness_width
-    z_range_tuple=(-370, 370)
+    z_range_tuple=(-370, 370),
+    lw=3,
+    t_model_max=50,
+    plot_std=False  # NEW OPTION — add std shading
 ):
     """
     Plot diameter (default) or radius evolution over time, with optional inset
     showing avg septum height (H_total).
-
+  
     Parameters
     ----------
     D : dict
@@ -379,8 +386,10 @@ def diam_plot(
         Module providing pgt.strand_thickness_width, if using inset.
     z_range_tuple : tuple
         Range for inset x-axis (nm units).
+    plot_std : bool
+        If True, shade ±1 SD around measured data using fill_between.
     """
-
+  
     # ---------------------------
     # Extract data
     # ---------------------------
@@ -393,48 +402,104 @@ def diam_plot(
         val_md = r * 2
         val_name = "Diameter"
         val_0 = D_0
-
+  
     # ---------------------------
     # Model curve parameters
     # ---------------------------
     # t_model = np.linspace(0, np.max(t) / 1000 / 60 * 1.2, 1000)  # min scale
-    t_model = np.linspace(0, 50, 1000)  # safe range
-
+    t_model = np.linspace(0, t_model_max, 1000)  # safe range
+  
     tau_c, alpha = 51, 1.3
-
+  
     # ---------------------------
     # Compute model and normalize
     # ---------------------------
     if normalize_diameter:
         val_md_plot = val_md / val_md[0]
-        val_model = d_alpha(t_model * 1000 * 60, tau_c, alpha)
         val_model = d_alpha(t_model, tau_c, alpha)  # t_model already in minutes
         ylabel = f"Normalized {val_name}"
     else:
         val_md_plot = val_md
-        val_model = d_alpha(t_model * 1000 * 60, tau_c, alpha) * val_0
-        val_model = d_alpha(t_model, tau_c, alpha)  # t_model already in minutes
+        val_model = d_alpha(t_model, tau_c, alpha) * val_0
         ylabel = f"{val_name} (nm)"
-
+  
     # ---------------------------
     # Plot measured data
     # ---------------------------
     if not modelonly:
-        ax.plot(t / 1000 / 60, val_md_plot, lw=3, label=mdlabel or overlay, color=mdcolor)
+        ax.plot(t / 1000 / 60, val_md_plot, lw=lw, label=mdlabel or overlay, color=mdcolor)
 
+# --- CORRECTED FEATURE ---
+        # Optionally plot standard deviation as shaded region
+        if plot_std:
+            # Support either D[key]["t_r_std"] or D[f"{key}_std"]
+            std_data = None
+            
+            print(f"\n[DEBUG] Looking for std data for key={key}")
+            print(f"  D[key].keys() = {D[key].keys()}")
+            
+            if f"{key}_std" in D:
+                std_data = np.array(D[f"{key}_std"])
+                print(f"  Found D['{key}_std'], shape={std_data.shape}")
+            elif "t_r_std" in D[key]:
+                std_data = np.array(D[key]["t_r_std"])
+                print(f"  Found D[key]['t_r_std'], shape={std_data.shape}")
+                # If it's 2D (time, radius_std), extract the value column AND convert to diameter
+                if std_data.ndim == 2 and std_data.shape[1] == 2:
+                    std_data = std_data[:, 1] * 2  # radius_std -> diameter_std
+                    print(f"  Extracted column 1 and multiplied by 2 (radius->diameter), new shape={std_data.shape}")
+            else:
+                print(f"  No std data found!")
+
+            if std_data is not None:
+                std_data = np.asarray(std_data).flatten()
+                print(f"  After flattening: shape={std_data.shape}, first few values={std_data[:3]}")
+                
+                # Ensure lengths match
+                print(f"  val_md_plot length={len(val_md_plot)}, std_data length={len(std_data)}")
+                
+                if len(std_data) != len(val_md_plot):
+                    print(f"  ERROR: Length mismatch! Skipping std plot.")
+                else:
+                    if normalize_diameter:
+                        std_plot = std_data / val_md[0]
+                        print(f"  Normalized by val_md[0]={val_md[0]}")
+                    else:
+                        std_plot = std_data
+                    
+                    time_min = t / 1000 / 60
+                    
+                    # Replace any NaNs with 0 to avoid breaking fill_between
+                    n_nan_before = np.isnan(std_plot).sum()
+                    std_plot = np.nan_to_num(std_plot, nan=0.0)
+                    n_nan_after = np.isnan(std_plot).sum()
+                    print(f"  NaNs: {n_nan_before} -> {n_nan_after}")
+                    print(f"  std_plot range: [{std_plot.min():.4f}, {std_plot.max():.4f}]")
+                    print(f"  val_md_plot range: [{val_md_plot.min():.4f}, {val_md_plot.max():.4f}]")
+                    
+                    ax.fill_between(
+                        time_min,
+                        val_md_plot - std_plot,
+                        val_md_plot + std_plot,
+                        color=mdcolor if mdcolor is not None else "gray",
+                        alpha=0.3,
+                        linewidth=0,
+                    )
+                    print(f"  fill_between executed successfully!")
+  
     # ---------------------------
     # Plot model curve
     # ---------------------------
     ax.plot(t_model, val_model, color=coltharp_color, label=label or coltharp_label, ls="--")
-
+  
     # ---------------------------
     # Axis labels and legend
     # ---------------------------
     if axislabels:
         ax.set_xlabel("Time (min)")
         ax.set_ylabel(ylabel)
-    ax.legend(loc="upper right", fontsize=8, title=legendtitle, ncol=ncol)
-
+        ax.legend(loc="upper right", fontsize=8, title=legendtitle, ncol=ncol)
+  
     # ---------------------------
     # Optional inset for H_total
     # ---------------------------
@@ -442,21 +507,21 @@ def diam_plot(
         if not hasattr(ax, "my_inset"):
             ax.my_inset = inset_axes(ax, width=width, height=height, loc="lower left", borderpad=4)
         ax_ins = ax.my_inset
-
+  
         # Data processing
         z_min, z_max = z_range_tuple
         strand_width_su = getattr(pgt, "strand_thickness_width", 5.0) / 5.0
         z_edges = np.arange(z_min, z_max + strand_width_su, strand_width_su)
         z_centers = (z_edges[:-1] + z_edges[1:]) / 2
         z_nm = z_centers * 5.0
-
+  
         ax_ins.plot(z_nm, D[key]["H_total"].mean(axis=0), label=overlay)
         ax_ins.set_xlim(-300, 300)
         if axislabels:
             ax_ins.set_xlabel("Long cell axis (nm)", fontsize=7)
             ax_ins.set_ylabel("Septum height (nm)", fontsize=7)
         # ax_ins.legend(fontsize=7)
-
+  
     return ax
 
 
