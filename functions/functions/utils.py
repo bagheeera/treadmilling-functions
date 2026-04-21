@@ -957,3 +957,128 @@ def is_file_a_more_recent_than_file_b(file_a_path, file_b_path):
     
     # Compare modification times
     return file_a_mod_time > file_b_mod_time
+
+import os
+import re
+from pathlib import Path
+
+def clean_restart_files(root_folder, subfolder_name=None, recursive=False, dry_run=False):
+    """
+    Removes all but the latest 'restart.<number>' files in a folder (or matching subfolders).
+
+    Args:
+        root_folder (str or Path): directory to start from
+        subfolder_name (str, optional): if given, look for subfolders with this name
+        recursive (bool): whether to search arbitrarily deep
+        dry_run (bool): if True, don't delete anything—just print what would be done
+    """
+    restart_pattern = re.compile(r"^restart\.(\d+(?:\.\d+)?)$")
+    root_folder = Path(root_folder)
+    if not root_folder.is_dir():
+        raise ValueError(f"{root_folder} is not a directory")
+
+    # Choose folders to clean
+    if subfolder_name:
+        if recursive:
+            folders = [p for p in root_folder.rglob(subfolder_name) if p.is_dir()]
+        else:
+            folders = [p for p in root_folder.iterdir() if p.is_dir() and p.name == subfolder_name]
+    else:
+        folders = [root_folder]
+
+    if not folders:
+        print("No matching folders found.")
+        return
+
+    for folder in folders:
+        restart_files = []
+        for f in folder.iterdir():
+            match = restart_pattern.match(f.name)
+            if match:
+                try:
+                    number = float(match.group(1))
+                    restart_files.append((number, f))
+                except ValueError:
+                    continue
+
+        if not restart_files:
+            continue  # no restarts here
+
+        restart_files.sort(key=lambda x: x[0], reverse=True)
+        latest = restart_files[0]
+        to_delete = restart_files[1:]
+
+        print(f"\nIn folder: {folder}")
+        print(f"  Keeping: {latest[1].name}")
+        if not to_delete:
+            continue
+
+        for _, fpath in to_delete:
+            if dry_run:
+                print(f"  [DRY-RUN] Would delete: {fpath.name}")
+            else:
+                print(f"  Deleting: {fpath.name}")
+                try:
+                    fpath.unlink()
+                except Exception as e:
+                    print(f"    Failed to delete {fpath.name}: {e}")
+
+    print("\nCleanup complete." if not dry_run else "\nDry-run complete.")
+
+
+# Example usage:
+# clean_restart_files("/path/to/data", dry_run=True)
+# clean_restart_files("/path/to/data", subfolder_name="RESTART", recursive=True)
+
+import pandas as pd
+def get_scalar_metric(D, key, metric_key_or_func):
+    """
+    Safely extracts a single float from D[key].
+    Handles dict keys, lambdas, and array results.
+    """
+    if key not in D:
+        return np.nan
+        
+    # 1. Get the raw value
+    if callable(metric_key_or_func):
+        val = metric_key_or_func(D, key)
+    else:
+        val = D[key].get(metric_key_or_func, np.nan)
+    
+    # 2. Flatten if it's an array/list (The "Flexibility" part)
+    if isinstance(val, (list, np.ndarray, pd.Series)):
+        # You decide the logic: np.nanmean, .iloc[-1], etc.
+        return np.nanmean(val) 
+    
+    # 3. Ensure it's a float or NaN
+    try:
+        return float(val) if val is not None else np.nan
+    except (TypeError, ValueError):
+        return np.nan
+    
+def key_pooling(D, base_key, metric_fct, seeds=[1, 2, 3, 4, 5]):
+    """
+    Pools data across seeds while preserving the underlying shape.
+    Works for scalars, arrays, and matrices.
+    """
+    collected_data = []
+    
+    for s in seeds:
+        s_key = update_key(base_key, seed=s)
+        if s_key in D:
+            val = metric_fct(D, s_key)
+            if val is not None:
+                collected_data.append(val)
+    
+    if not collected_data:
+        return None, None, 0
+
+    # Stack along a new 'seed' axis (axis 0)
+    # This turns N arrays of shape (M,) into one array of shape (N, M)
+    data_stack = np.array(collected_data)
+    
+    mean_res = np.nanmean(data_stack, axis=0)
+    std_res  = np.nanstd(data_stack, axis=0)
+    n_found  = len(collected_data)
+    
+    return mean_res, std_res, n_found
