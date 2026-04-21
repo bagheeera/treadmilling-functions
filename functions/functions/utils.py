@@ -1030,7 +1030,10 @@ def clean_restart_files(root_folder, subfolder_name=None, recursive=False, dry_r
 # clean_restart_files("/path/to/data", dry_run=True)
 # clean_restart_files("/path/to/data", subfolder_name="RESTART", recursive=True)
 
+import numpy as np
 import pandas as pd
+
+
 def get_scalar_metric(D, key, metric_key_or_func):
     """
     Safely extracts a single float from D[key].
@@ -1038,7 +1041,7 @@ def get_scalar_metric(D, key, metric_key_or_func):
     """
     if key not in D:
         return np.nan
-        
+    
     # 1. Get the raw value
     if callable(metric_key_or_func):
         val = metric_key_or_func(D, key)
@@ -1047,38 +1050,243 @@ def get_scalar_metric(D, key, metric_key_or_func):
     
     # 2. Flatten if it's an array/list (The "Flexibility" part)
     if isinstance(val, (list, np.ndarray, pd.Series)):
-        # You decide the logic: np.nanmean, .iloc[-1], etc.
-        return np.nanmean(val) 
+        return np.nanmean(val)
     
     # 3. Ensure it's a float or NaN
     try:
         return float(val) if val is not None else np.nan
     except (TypeError, ValueError):
         return np.nan
+
+
+def _normalize_value(val):
+    """
+    Convert a value to a numpy array for stacking purposes.
+    Handles scalars, lists, arrays, Series, DataFrames.
+    """
+    if val is None:
+        return None
     
-def key_pooling(D, base_key, metric_fct, seeds=[1, 2, 3, 4, 5]):
+    if isinstance(val, pd.DataFrame):
+        return val.values
+    elif isinstance(val, pd.Series):
+        return val.values
+    elif isinstance(val, (list, tuple)):
+        return np.array(val)
+    elif isinstance(val, np.ndarray):
+        return val
+    else:
+        # Scalar
+        try:
+            return np.array([float(val)])
+        except (TypeError, ValueError):
+            return None
+
+
+def key_pooling(D, base_key, metric_fct, seeds=None, pool_params=None):
     """
-    Pools data across seeds while preserving the underlying shape.
-    Works for scalars, arrays, and matrices.
+    Pools data across multiple parameter values (seeds, etc.) while preserving shape.
+    
+    Parameters:
+    -----------
+    D : dict
+        The data dictionary.
+    base_key : tuple or dict
+        Template key to modify.
+    metric_fct : callable
+        Function(D, key) -> value (scalar, array, or matrix).
+    seeds : list, optional
+        If provided, pools across these seed values (default [1,2,3,4,5]).
+    pool_params : dict, optional
+        Dict mapping parameter names to lists of values to pool over.
+        E.g., {'seed': [1,2,3], 'trial': [0,1]}
+        If provided, seeds is ignored.
+    
+    Returns:
+    --------
+    mean_res : np.ndarray or scalar or None
+        Mean across pooled dimension (axis 0).
+    std_res : np.ndarray or scalar or None
+        Standard deviation across pooled dimension.
+    n_found : int
+        Number of runs successfully collected.
+    
+    Examples:
+    ---------
+    # Pool across seeds only
+    mean, std, n = key_pooling(D, base_key, my_func, seeds=[1,2,3,4,5])
+    
+    # Pool across seeds and trials
+    mean, std, n = key_pooling(
+        D, base_key, my_func,
+        pool_params={'seed': [1,2,3], 'trial': [0,1,2]}
+    )
     """
+    from itertools import product
+    
+    # Determine what to pool over
+    if pool_params is None:
+        if seeds is None:
+            seeds = [1, 2, 3, 4, 5]
+        pool_params = {'seed': seeds}
+    
     collected_data = []
     
-    for s in seeds:
-        s_key = update_key(base_key, seed=s)
+    # Generate all combinations of pool parameters
+    items = sorted(pool_params.items())
+    param_names = [it[0] for it in items]
+    param_values = [it[1] for it in items]
+    
+    for vals in product(*param_values):
+        update_dict = dict(zip(param_names, vals))
+        try:
+            # Update the key with these parameter values
+            s_key = update_key(base_key, **update_dict)
+        except:
+            # Fallback: assume base_key is already a dict-like
+            s_key = base_key.copy() if isinstance(base_key, dict) else base_key
+            for pname, pval in update_dict.items():
+                # Attempt to update the key (implementation depends on your update_key)
+                s_key = update_key(s_key, **{pname: pval})
+        
         if s_key in D:
-            val = metric_fct(D, s_key)
-            if val is not None:
-                collected_data.append(val)
+            try:
+                val = metric_fct(D, s_key)
+                if val is not None:
+                    collected_data.append(val)
+            except Exception:
+                # Skip failed calculations
+                continue
     
     if not collected_data:
         return None, None, 0
-
-    # Stack along a new 'seed' axis (axis 0)
-    # This turns N arrays of shape (M,) into one array of shape (N, M)
-    data_stack = np.array(collected_data)
     
+    # Normalize all values to arrays (preserving their original shape)
+    normalized_data = [_normalize_value(v) for v in collected_data]
+    normalized_data = [v for v in normalized_data if v is not None]
+    
+    if not normalized_data:
+        return None, None, 0
+    
+    # Stack along a new axis (axis 0)
+    # This turns N arrays of shape (M,) or (M, L) into (N, M) or (N, M, L)
+    try:
+        data_stack = np.array(normalized_data)
+    except ValueError:
+        # If shapes don't match, try to convert to object array
+        data_stack = np.array(normalized_data, dtype=object)
+        # Fall back to simpler pooling (this case is rare)
+        return None, None, len(normalized_data)
+    
+    # Compute statistics along the pooling axis (axis 0)
     mean_res = np.nanmean(data_stack, axis=0)
-    std_res  = np.nanstd(data_stack, axis=0)
-    n_found  = len(collected_data)
+    std_res = np.nanstd(data_stack, axis=0)
+    n_found = len(normalized_data)
     
     return mean_res, std_res, n_found
+
+
+def collect_trend_from_base(
+    D, 
+    base_key, 
+    param_name, 
+    param_values, 
+    analysis_func, 
+    pool_params=None,
+    cache_name="circ_v1"
+):
+    """
+    Varies a parameter from a base key, pools multiple runs, and returns trend data.
+    
+    Parameters:
+    -----------
+    D : dict
+        The global simulation results dictionary.
+    base_key : tuple or dict
+        The 'anchor' key used as a template for the parameter sweep.
+    param_name : str
+        The parameter to vary on the X-axis (e.g., 'tauhyd').
+    param_values : list
+        The range of values for param_name to evaluate.
+    analysis_func : callable
+        Function(D, key) -> result (scalar, array, or matrix).
+    pool_params : dict, optional
+        Parameters to pool over (e.g., {'seed': [1,2,3,4,5]}).
+        If None, no pooling is performed.
+    cache_name : str
+        Unique identifier to store/retrieve results to avoid re-calculation.
+    
+    Returns:
+    --------
+    x_vals : np.ndarray
+        Sorted parameter values.
+    y_means : np.ndarray
+        Mean results (shape depends on analysis_func output).
+    y_stds : np.ndarray
+        Standard deviation (same shape as y_means).
+    
+    Examples:
+    ---------
+    # Simple sweep with pooling across seeds
+    x, y_mean, y_std = collect_trend_from_base(
+        D, base_key, 'tauhyd', [0.1, 0.2, 0.3],
+        analysis_func, pool_params={'seed': [1,2,3,4,5]}
+    )
+    
+    # Sweep with pooling over multiple parameters
+    x, y_mean, y_std = collect_trend_from_base(
+        D, base_key, 'tauhyd', [0.1, 0.2, 0.3],
+        analysis_func, pool_params={'seed': [1,2,3], 'trial': [0,1,2]}
+    )
+    """
+    results = []
+    storage_key = f"cache_{cache_name}"
+    
+    for val in param_values:
+        # Create key for this X-axis point
+        current_key = update_key(base_key, **{param_name: val})
+        
+        # Define metric function that uses caching
+        def cached_analysis_func(D, key):
+            res = D[key].get(storage_key)
+            if res is None:
+                try:
+                    res = analysis_func(D, key)
+                    D[key][storage_key] = res
+                except Exception:
+                    res = np.nan
+            return res
+        
+        # Pool across secondary parameters if specified
+        if pool_params:
+            mean_res, std_res, n_found = key_pooling(
+                D, current_key, cached_analysis_func, pool_params=pool_params
+            )
+        else:
+            # No pooling, just get the single result
+            try:
+                mean_res = cached_analysis_func(D, current_key)
+                std_res = None
+                n_found = 1
+            except Exception:
+                mean_res = np.nan
+                std_res = np.nan
+                n_found = 0
+        
+        results.append({
+            'param_val': val,
+            'mean': mean_res,
+            'std': std_res,
+            'n_found': n_found
+        })
+    
+    # Sort by parameter value
+    results.sort(key=lambda x: x['param_val'])
+    
+    x_vals = np.array([r['param_val'] for r in results])
+    y_means = np.array([r['mean'] if r['mean'] is not None else np.nan for r in results])
+    y_stds = np.array([r['std'] if r['std'] is not None else np.nan for r in results])
+    
+    return x_vals, y_means, y_stds
+
+
