@@ -431,14 +431,26 @@ def violin_boxplot(ax, positions, data_dict, colors, widths=0.15, alpha=0.3):
 
     # 2. Generate Boxplot (Foreground)
     # patch_artist=True is required to fill the boxes with color
-    bp = ax.boxplot(data_dict.values(), positions=positions,
-                    widths=widths, patch_artist=True,
-                    showfliers=False, # Removes outliers to keep the plot clean
-                    medianprops=dict(color="black", linewidth=2))
+    # bp = ax.boxplot(data_dict.values(), positions=positions,
+    #                 widths=widths, patch_artist=True,
+    #                 showfliers=False, # Removes outliers to keep the plot clean
+    #                 medianprops=dict(color="black", linewidth=2))
+
+    bp = ax.boxplot(
+        data_dict.values(),
+        positions=positions,
+        widths=widths,
+        patch_artist=True,         # needed to access box face color
+        showfliers=False,          # hide outlier markers
+        boxprops=dict(color="black", linewidth=1, facecolor="none"),  # outlines only
+        capprops=dict(color="black", linewidth=1),
+        whiskerprops=dict(color="black", linewidth=1),
+        medianprops=dict(color="black", linewidth=2)
+    )
     
     # Apply custom colors and alpha to the box patches
     for patch, color in zip(bp["boxes"], colors):
-        patch.set_facecolor(color)
+        # patch.set_facecolor(color)
         patch.set_alpha(alpha)
 
     # 3. Final Formatting
