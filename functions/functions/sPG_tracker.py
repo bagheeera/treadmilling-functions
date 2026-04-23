@@ -84,19 +84,25 @@ import functions as fct
 NM_PER_SIM_UNIT        = 5     # 1 simulation unit = 5 nm
 strand_thickness_width = 4.5   # nm — width of one strand; also radial step in apply_deform
 septal_thickness       = 40    # nm — total ring thickness (Wenzel PNAS 2020)
+strand_height_nm       = 4.5   # nm — height per count (scaling), default = bin size
+                               # see https://journals.asm.org/doi/10.1128/jb.186.18.5978-5987.2004 
+                               # and https://www.nature.com/articles/ncomms15370
 
 y_edges  = None
 N_Y_BINS = None
 
 
 def set_septal_bins(strand_width_nm=strand_thickness_width,
-                    septal_thickness_nm=septal_thickness):
+                    septal_thickness_nm=septal_thickness,
+                    strand_height_nm_val=None):  # None = same as strand_width_nm
     """
     (Re)compute y_edges and N_Y_BINS from physical parameters and update module globals.
     Call before instantiating any tracker if using non-default geometry.
     """
-    global y_edges, N_Y_BINS, strand_thickness_width, septal_thickness
+    global y_edges, N_Y_BINS, strand_thickness_width, septal_thickness, strand_height_nm
     strand_thickness_width = strand_width_nm
+    strand_height_nm       = strand_height_nm_val if strand_height_nm_val is not None \
+                             else strand_width_nm
     septal_thickness       = septal_thickness_nm
     y_edges = np.arange(
         -septal_thickness_nm - strand_width_nm,
@@ -484,7 +490,8 @@ class CoverageTrackerSymmetric:
         peak : float
             Peak value of profile — drives radial displacement.
         """
-        strandwidth_su = strand_thickness_width / NM_PER_SIM_UNIT
+        # strandwidth_su = strand_thickness_width / NM_PER_SIM_UNIT
+        strandwidth_su = strand_height_nm / NM_PER_SIM_UNIT  # height, not bin size
 
         # average over x-bins → (N_Y_BINS,)
         profile = self._cumulative.mean(axis=0)

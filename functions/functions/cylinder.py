@@ -26,7 +26,7 @@ def histogram_mesh(df, fulldf, rundir,
                    z_range_tuple=(-150, 150),
                    blur_nm=(20.0, 5.0),
                    per_interval=False,
-                   height_per_count_nm=None # if None = strand_width_nm (4.5 nm default)):
+                #    height_per_count_nm=None # if None = strand_width_nm (4.5 nm default)):
                    ):  
     """
     Build a deformed cylindrical mesh from a 2D histogram of strand particle
@@ -87,8 +87,7 @@ def histogram_mesh(df, fulldf, rundir,
 
     # ── Bin geometry ─────────────────────────────────────────────────────────
     strand_width_nm     = pgt.strand_thickness_width          # nm — controls bin size
-    height_per_count_nm = height_per_count_nm if height_per_count_nm is not None \
-                           else strand_width_nm                # nm — controls scaling
+    height_per_count_nm = pgt.strand_height_nm       # nm — height per count (scaling), default = bin size
     strand_width_su = strand_width_nm / NM_PER_SU         # simulation units
     circumference_nm = NM_PER_SU * circumference_su
 
