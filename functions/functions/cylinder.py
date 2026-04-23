@@ -25,7 +25,9 @@ from functions.sPG_tracker import calc_inward_deformations
 def histogram_mesh(df, fulldf, rundir,
                    z_range_tuple=(-150, 150),
                    blur_nm=(20.0, 5.0),
-                   per_interval=False):
+                   per_interval=False,
+                   height_per_count_nm=None # if None = strand_width_nm (4.5 nm default)):
+                   ):  
     """
     Build a deformed cylindrical mesh from a 2D histogram of strand particle
     positions, with bins sized to strand dimensions.
@@ -84,7 +86,9 @@ def histogram_mesh(df, fulldf, rundir,
     R_nm             = NM_PER_SU * circumference_su / (2 * np.pi)  # run-start radius in nm
 
     # ── Bin geometry ─────────────────────────────────────────────────────────
-    strand_width_nm = pgt.strand_thickness_width          # nm
+    strand_width_nm     = pgt.strand_thickness_width          # nm — controls bin size
+    height_per_count_nm = height_per_count_nm if height_per_count_nm is not None \
+                           else strand_width_nm                # nm — controls scaling
     strand_width_su = strand_width_nm / NM_PER_SU         # simulation units
     circumference_nm = NM_PER_SU * circumference_su
 
@@ -134,7 +138,7 @@ def histogram_mesh(df, fulldf, rundir,
         H_total += H_interval.sum(axis=0)   # (N_fine, n_z)
 
         if per_interval:
-            H_s    = gaussian_filter(H_total * strand_width_nm,
+            H_s    = gaussian_filter(H_total * height_per_count_nm, #strand_width_nm,
                                      sigma=(sigma_theta_px, sigma_z_px),
                                      mode=('wrap', 'reflect'))
             r_snap = R_nm - H_s
@@ -142,7 +146,7 @@ def histogram_mesh(df, fulldf, rundir,
             t_snapshots.append(t1)
 
     # ── Scale and blur ────────────────────────────────────────────────────────
-    H_scaled  = H_total * strand_width_nm   # nm
+    H_scaled  = H_total * height_per_count_nm #strand_width_nm   # nm
     H_blurred = gaussian_filter(H_scaled,
                                 sigma=(sigma_theta_px, sigma_z_px),
                                 mode=('wrap', 'reflect'))
@@ -811,7 +815,7 @@ def front_render_display(
     overlay=None,
     mdcolor="tab:blue",
     coltharp_color="k",
-    coltharp_label="Coltharp model",
+    coltharp_label=None, #"Coltharp model",
     normalize=True,
     display_radius=False,
     modelonly=False,
