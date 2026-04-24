@@ -1,6 +1,8 @@
 import math
 import matplotlib.pyplot as plt
-plt.rcParams["figure.dpi"] = 120
+# plt.rcParams["figure.dpi"] = 120
+import matplotlib as mpl
+mpl.rcParams['figure.dpi'] = 100
 import pandas as pd
 import random
 import numpy as np

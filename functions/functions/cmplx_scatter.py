@@ -346,7 +346,7 @@ def scatter_fct(
                 )
 
         histogram_axis.set_xlabel("Density")
-        histogram_axis.set_yticks([])
+        # histogram_axis.set_yticks([])
         histogram_axis.set_yticklabels([])
         if display_hist_legend:
             histogram_axis.legend()

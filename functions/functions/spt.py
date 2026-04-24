@@ -705,3 +705,171 @@ def sliding_window_span(df, window_times, step_size=1):
                     records.append({"pid": pid, "L": window_time, "span": span})
 
     return pd.DataFrame(records)
+
+def plot_pid_colored_by_window_metric(
+        df, pid,
+        window_sizes,
+        metric_fn,
+        metric_name="metric",
+        step_size=1,
+        cmap=plt.cm.plasma,
+        fig=None,
+        ax=None,
+        s=5, linewidth=1):
+
+    df_pid = df[df["id"] == pid].reset_index(drop=True)
+    n_pts  = len(df_pid)
+
+    metric_arrays = {}
+    for L in window_sizes:
+        arr = np.full(n_pts, np.nan)
+        for start in range(0, n_pts - L + 1, L):  # step_size=L always
+            val = metric_fn(df_pid.iloc[start : start + L])
+            if np.isfinite(val):
+                arr[start : start + L] = val
+        metric_arrays[L] = arr
+    
+
+    all_vals = np.concatenate([v[np.isfinite(v)] for v in metric_arrays.values()])
+    vmin, vmax = np.nanpercentile(all_vals, 2), np.nanpercentile(all_vals, 98)
+    norm = plt.Normalize(vmin=vmin, vmax=vmax)
+
+    # ── create fig/axes only if not provided ──────────────────────────────────
+    created_fig = fig is None
+    if created_fig:
+        fig, axes = plt.subplots(1, len(window_sizes),
+                                 figsize=(3 * len(window_sizes), 3))
+        axes = np.atleast_1d(axes)
+    else:
+        axes = np.atleast_1d(ax)
+
+    for i, L in enumerate(window_sizes):
+        a = axes[i]
+        a.plot(df_pid["x"], df_pid["y"],
+               color="grey", linewidth=linewidth, alpha=0.4, zorder=1)
+        a.scatter(df_pid["x"], df_pid["y"],
+                  c=metric_arrays[L], cmap=cmap, norm=norm,
+                  s=s, zorder=3, edgecolors="k", linewidths=0.1)
+        a.set_title(f"L={L}", fontsize=8)
+        a.set_aspect("equal")
+        # a.set_xticklabels([])
+        # a.set_yticklabels([])
+
+    # always add colorbar if fig is available
+    if fig is not None:
+        sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+        sm.set_array([])
+        fig.colorbar(sm, ax=axes.tolist(), label=metric_name, shrink=0.6)
+
+    if created_fig:
+        fig.suptitle(f"pid={pid} | {metric_name}", fontsize=9)
+        plt.tight_layout()
+        plt.show()
+
+    # return axes
+
+import ipywidgets as widgets
+from IPython.display import display
+
+def interactive_window_metric(df, pid, window_sizes, metric_fn,
+                               metric_name="metric", step_size=1,
+                               cmap=plt.cm.plasma, s=20):
+    df_pid = df[df["id"] == pid].reset_index(drop=True)
+    n_pts  = len(df_pid)
+
+    # ── precompute metric for all window sizes ─────────────────────────────────
+    metric_arrays = {}
+    for L in window_sizes:
+        arr    = np.full(n_pts, np.nan)
+        counts = np.zeros(n_pts)
+        for start in range(0, n_pts - L + 1, step_size):
+            val = metric_fn(df_pid.iloc[start : start + L])
+            if np.isfinite(val):
+                arr[start : start + L] = np.nansum(
+                    [arr[start : start + L], np.full(L, val)], axis=0)
+                counts[start : start + L] += 1
+        valid = counts > 0
+        arr[valid] /= counts[valid]
+        metric_arrays[L] = arr
+
+    all_vals = np.concatenate([v[np.isfinite(v)] for v in metric_arrays.values()])
+    vmin, vmax = np.nanpercentile(all_vals, 2), np.nanpercentile(all_vals, 98)
+    norm  = plt.Normalize(vmin=vmin, vmax=vmax)
+
+    # ── widgets ────────────────────────────────────────────────────────────────
+    L_slider     = widgets.SelectionSlider(options=window_sizes,
+                                           description="Window size L:",
+                                           continuous_update=True,
+                                           style={"description_width": "auto"})
+    start_slider = widgets.IntSlider(value=0, min=0,
+                                     max=n_pts - window_sizes[0],
+                                     description="Window start:",
+                                     continuous_update=True,
+                                     style={"description_width": "auto"})
+
+    def update_start_range(change):
+        start_slider.max = n_pts - L_slider.value - 1
+
+    L_slider.observe(update_start_range, names="value")
+
+    out = widgets.Output()
+
+    def plot(L, start):
+        with out:
+            out.clear_output(wait=True)
+            fig, ax = plt.subplots(figsize=(5, 5))
+
+            metric_arr = metric_arrays[L]
+
+            # grey for all points outside window
+            outside = np.ones(n_pts, dtype=bool)
+            outside[start : start + L] = False
+
+            ax.plot(df_pid["x"], df_pid["y"],
+                    color="lightgrey", linewidth=1, alpha=0.5, zorder=1)
+
+            # colored scatter for outside points (faint)
+            ax.scatter(df_pid["x"][outside], df_pid["y"][outside],
+                       c=metric_arr[outside], cmap=cmap, norm=norm,
+                       s=s * 0.5, zorder=2, alpha=0.3,
+                       edgecolors="none")
+
+            # highlighted window
+            win = df_pid.iloc[start : start + L]
+            win_metric = metric_arr[start : start + L]
+            sc = ax.scatter(win["x"], win["y"],
+                            c=win_metric, cmap=cmap, norm=norm,
+                            s=s * 2, zorder=4,
+                            edgecolors="k", linewidths=0.4)
+
+            # window outline box
+            ax.plot(win["x"], win["y"],
+                    color="black", linewidth=1.5, alpha=0.6, zorder=3)
+            ax.plot(win["x"].iloc[0], win["y"].iloc[0],
+                    "o", color="lime", markersize=8, zorder=5,
+                    markeredgecolor="k", markeredgewidth=0.5)
+            ax.plot(win["x"].iloc[-1], win["y"].iloc[-1],
+                    "s", color="red", markersize=8, zorder=5,
+                    markeredgecolor="k", markeredgewidth=0.5)
+
+            plt.colorbar(sc, ax=ax, label=metric_name, shrink=0.6)
+            ax.set_title(f"pid={pid} | L={L} | start={start} | "
+                         f"{metric_name}={np.nanmean(win_metric):.3f}")
+            ax.set_aspect("equal")
+            ax.set_xticklabels([])
+            ax.set_yticklabels([])
+            plt.tight_layout()
+            plt.show()
+
+    interactive_plot = widgets.interactive(plot,
+                                           L=L_slider,
+                                           start=start_slider)
+    display(widgets.VBox([L_slider, start_slider, out]))
+    plot(L_slider.value, start_slider.value)
+
+    # link sliders to plot manually for responsiveness
+    def on_change(_):
+        plot(L_slider.value, start_slider.value)
+
+    L_slider.observe(on_change, names="value")
+    start_slider.observe(on_change, names="value")
