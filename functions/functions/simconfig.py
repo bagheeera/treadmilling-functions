@@ -10,14 +10,14 @@ def build_config(base: dict, *overrides: dict) -> dict:
 
 
 
-base = {
+base_values = {
     # ---- Basic simulation configuration ----
     "read_data": "configuration.txt",
     "outputBonds": False,  # Flag to enable bond output
 
     # ---- Runtime and timing parameters ----
     "tstep": 0.001,     # 0.001,    # Time step size
-    "run_time": 2500.0,    # Total simulation time
+    "run_time": 3000.0,    # Total simulation time
     "stab_steps": 1,       # Stabilization steps before main run
     "dT": 10000,          # Steps between septum coverage evaluations
     #"threshold": 0.75,     # Fraction of filled bins to trigger constriction
@@ -50,7 +50,7 @@ base = {
     "fCurv": 0.5,           # Curvature modulation factor
     "fSwim": 0.0,         # Active swim force
     "addforce": False,    # Enable extra force flag
-    "fsynth": 25,         # Synthesis force
+    "fsynth": 50,         # Synthesis force
     "saturate": 15000,    # Saturation threshold
     "rc": 0.8,            # Reaction cutoff
     "activationrange": 1.5,
@@ -107,7 +107,7 @@ base = {
 
     # ---- Geometry bins for constriction ----
     "Nangularbins": 200,  # Number of circumferential bins
-    "strandwidth": 3.0
+    "strandheight": 3.0
 }
 # print(os.getcwd())
 import subprocess
