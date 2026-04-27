@@ -10,7 +10,7 @@ def build_config(base: dict, *overrides: dict) -> dict:
 
 
 
-base_values = {
+base = {
     # ---- Basic simulation configuration ----
     "read_data": "configuration.txt",
     "outputBonds": False,  # Flag to enable bond output
