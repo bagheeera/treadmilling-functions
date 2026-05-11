@@ -469,18 +469,37 @@ def create_footer(custompath=None):
 def save_fig(fig, name, sources, notes="", footersize=4, notebook_name="",
              result_folderpath="../results"):
     """
-    Save a matplotlib figure with organized metadata and a descriptive footer.
+    Save a matplotlib figure along with descriptive metadata for traceability.
+
+    The function stores the plot as both PNG and SVG formats and writes a 
+    YAML metadata file containing the data sources, context, and notes 
+    necessary to reproduce the figure.
 
     Parameters
     ----------
     fig : matplotlib.figure.Figure
-        The figure object to save.
+        Figure object to save.
     name : str
-        Name for this figure folder and file.
-    sources : list of str
-        Paths to the simulation runs or data used to make this figure.
-    notes : str
-        Additional notes (optional).
+        Base name for the figure folder and output files.
+    sources : dict or list of str
+        Configuration dictionary (e.g., plotting parameters) or a list of data 
+        source paths used to produce this figure.
+    notes : str, optional
+        Additional free-form notes about the figure or analysis.
+    footersize : int, optional
+        Font size for the figure footer text (default 4).
+    notebook_name : str, optional
+        Name of the notebook or script that created the figure.
+    result_folderpath : str or Path, optional
+        Directory where results are stored (default "../results").
+
+    Saves
+    -----
+    {name}.png : PNG image
+    {name}.svg : SVG image
+    meta.yaml  : YAML file containing metadata fields such as sources,
+                 creation timestamp, and notebook name.
+
     """
     from pathlib import Path
     from datetime import datetime
