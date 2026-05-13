@@ -397,10 +397,12 @@ def filter_by_time(xy, d_xy, time, T_range):
     
     return filtered_xy, filtered_d_xy, filtered_time
 
-def bin_dxy(xy, d_xy, N_bins=25, yrange=35):
+def bin_dxy(xy, d_xy, N_bins=25, yrange=35, x_minmax=None):
 
-    
-    x_minmax = -yrange, yrange # np.min(xy[:,0]), np.max(xy[:,0])
+    if x_minmax is None:
+        x_minmax = np.min(xy[:,0]), np.max(xy[:,0]) # -yrange, yrange # 
+    else:
+        x_minmax = -x_minmax, x_minmax
     y_minmax = -yrange, yrange #np.min(xy[:,1]), np.max(xy[:,1]),
     x_minmax, y_minmax
     
