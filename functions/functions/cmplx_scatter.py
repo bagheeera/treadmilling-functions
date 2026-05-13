@@ -52,6 +52,7 @@ def scatter_fct(
     histogram_bins=30,
     histogram_range=None,
     hist_timeavg_range=None,
+    histogram_xrange=None, # only bin a given region along x
 ):
     """
     Flexible scatter plot with optional histogram.
@@ -330,6 +331,9 @@ def scatter_fct(
                     (df["time"] == t_frame)
                 ]
                 
+            if histogram_xrange is not None:
+                df_hist = df_hist[df_hist["x"].between(histogram_xrange[0], histogram_xrange[1])]
+
             # Restrict y to desired range
             df_hist = df_hist[df_hist["y"].between(histogram_range[0], histogram_range[1])]
             if not df_hist.empty:
@@ -359,7 +363,6 @@ def scatter_fct(
 """
 Minimal arrow orientation functions.
 """
-
 import pandas as pd
 
 

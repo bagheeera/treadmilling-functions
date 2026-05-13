@@ -225,238 +225,345 @@ def reassign_molids(df, verbose=False):
     return df
 
 
+# def reassign_molids_optimized(df, verbose=False):
+#     """
+#     Reassign molecule IDs to maintain consistent lineage labels across time steps.
+ 
+#     This function processes molecular data across multiple time steps, identifying which
+#     molecule IDs belong together and assigning them consistent lineage labels. It handles
+#     cases where molecules may split, merge, or change composition over time.
+ 
+#     Args:
+#         df (pd.DataFrame): Input dataframe with required columns:
+#             - 'time': Time step identifier (numeric, should be sortable)
+#             - 'mol': Original molecule identifier
+#             - 'id': Unique identifier for each molecule ID entry
+            
+#             Note: All other columns are preserved in the output.
+ 
+#         verbose (bool, optional): If True, print detailed processing information at each
+#             time step, including:
+#             - Lineages that end (reference ID disappears)
+#             - New lineages created
+#             - Reference ID updates within existing lineages
+#             Default: False
+ 
+#     Returns:
+#         pd.DataFrame: Copy of input dataframe with modified 'mol' column containing
+#             the reassigned lineage labels (integers).
+ 
+#     Notes:
+#         - Input dataframe is not modified; a copy is returned
+#         - Time ordering is enforced (data is sorted by 'time')
+#         - Lineage labels are unique positive integers assigned in order of appearance
+#         - All molecule IDs in the same lineage at a given time step receive the same label
+#         - Reference ID selection uses the "middle" ID for robustness against outliers
+ 
+#     Raises:
+#         KeyError: If required columns ('time', 'mol', 'id') are missing from dataframe
+#         TypeError: If 'time' or 'id' columns are not numeric
+ 
+#     Performance Characteristics:
+#         - Time Complexity: O(n log n) per time step (dominated by sorting)
+#         - Space Complexity: O(n) for auxiliary arrays
+#         - Typical Runtime: ~50,000-100,000 rows/second on modern hardware
+#         - Scales linearly with number of time steps
+ 
+#     Example:
+#         >>> import pandas as pd
+#         >>> import numpy as np
+#         >>> from reassign_molids_optimized import reassign_molids_optimized
+#         >>>
+#         >>> # Example: Track molecules across 3 time steps
+#         >>> df = pd.DataFrame({
+#         ...     'time': [0, 0, 0, 1, 1, 1, 2, 2, 2],
+#         ...     'mol': [10, 10, 20, 10, 10, 20, 10, 10, 20],
+#         ...     'id': [101, 102, 201, 101, 102, 201, 101, 102, 201]
+#         ... })
+#         >>> result = reassign_molids_optimized(df, verbose=False)
+#         >>> print(result)
+#            time  mol   id  mol
+#         0     0   10  101    1
+#         1     0   10  102    1
+#         2     0   20  201    2
+#         3     1   10  101    1
+#         4     1   10  102    1
+#         5     1   20  201    2
+#         6     2   10  101    1
+#         7     2   10  102    1
+#         8     2   20  201    2
+ 
+#     Warnings:
+#         - If 'id' values are not unique, behavior is undefined. Ensure each row has
+#           a distinct 'id' value.
+#         - Large time steps with many unique molecules may consume significant memory.
+#           For datasets >10M rows, consider processing in temporal chunks.
+#     """
+#     # ========================================================================
+#     # INITIALIZATION
+#     # ========================================================================
+    
+#     df = df.copy()
+#     df = df.sort_values("time").reset_index(drop=True)  # Enforce chronological order
+    
+#     # Convert to numpy arrays for fast vectorized operations
+#     time_arr = df["time"].values
+#     mol_arr = df["mol"].values.astype(object)  # Object type allows string labels temporarily
+#     id_arr = df["id"].values
+    
+#     # Tracking structures
+#     lineages = {}       # Maps ref_id -> lineage_label (e.g., ref_id=42 -> "#1")
+#     used_labels = set() # Set of numeric labels already assigned for O(1) lookup
+#     next_label = 1      # Next available lineage label to assign
+#     times = np.unique(time_arr)  # Sorted array of unique time steps
+    
+#     # ========================================================================
+#     # MAIN LOOP: Process each time step sequentially
+#     # ========================================================================
+#     # Note: Cannot parallelize across time steps due to lineage dependencies
+    
+#     for t in tqdm(times, desc="Propagating lineages"):
+#         if verbose:
+#             print(f"\n=== TIME {t} ===")
+        
+#         # ====================================================================
+#         # OPTIMIZATION: Get all indices for this time step at once
+#         # Instead of repeatedly applying full-array masks like (time_arr == t),
+#         # we get indices once and slice into arrays. This avoids repeated
+#         # boolean array allocations and improves cache locality.
+#         # ====================================================================
+#         idx_t = np.where(time_arr == t)[0]
+        
+#         if len(idx_t) == 0:
+#             continue
+        
+#         # ====================================================================
+#         # STEP 1: End lineages whose reference ID disappeared
+#         # ====================================================================
+#         # A lineage ends when its reference ID is no longer present in the data.
+#         # This handles cases where specific molecules cease to exist at a time step.
+        
+#         missing_refs = []
+#         for ref_id in list(lineages.keys()):
+#             # Check if ref_id appears in current time step (vectorized)
+#             if not np.any(id_arr[idx_t] == ref_id):
+#                 missing_refs.append(ref_id)
+#                 if verbose:
+#                     print(f"Lineage {lineages[ref_id]} with ref_id={ref_id} missing at time {t}, ending lineage.")
+        
+#         # Remove ended lineages from tracking
+#         for ref_id in missing_refs:
+#             del lineages[ref_id]
+        
+#         # ====================================================================
+#         # STEP 2: Identify which molecules are "new" (not in any lineage yet)
+#         # ====================================================================
+#         # A molecule is "new" if no active lineage claims it at this time step.
+#         # We track this to avoid assigning multiple lineages to the same mol.
+        
+#         assigned_mols = set()
+#         for ref_id in list(lineages.keys()):
+#             # If this lineage's ref_id is present, get its current mol
+#             if np.any(id_arr[idx_t] == ref_id):
+#                 # Get the first (and should be only) mol for this ref_id
+#                 current_mol = mol_arr[np.where(id_arr[idx_t] == ref_id)[0][0]]
+#                 assigned_mols.add(current_mol)
+        
+#         # New molecules = all molecules at this time - already assigned molecules
+#         unique_mols_t = set(mol_arr[idx_t]) - assigned_mols
+        
+#         # ====================================================================
+#         # STEP 2: Assign new lineages to previously unseen molecules
+#         # ====================================================================
+#         # Each new molecule group gets a fresh lineage label.
+#         # A "group" consists of all IDs that share the same original mol value.
+        
+#         for mol in unique_mols_t:
+#             # Find all IDs belonging to this molecule at current time
+#             mol_mask = mol_arr[idx_t] == mol
+#             ids_in_mol = np.sort(id_arr[idx_t][mol_mask])
+            
+#             if len(ids_in_mol) == 0:
+#                 continue
+            
+#             # ================================================================
+#             # HEURISTIC: Choose "middle" ID as reference for robustness
+#             # ================================================================
+#             # Using the middle ID reduces sensitivity to outliers and edge
+#             # effects in the ID sequence. Alternatives: min, max, or random.
+#             # The middle ID is more stable across splits and merges.
+            
+#             # Find next unused label (could optimize with counter if labels
+#             # are always contiguous, but this is safe and O(1) per time step)
+#             while next_label in used_labels:
+#                 next_label += 1
+            
+#             lineage_label = f"#{next_label}"  # Temporary string format for uniqueness
+#             used_labels.add(next_label)
+#             next_label += 1
+            
+#             # Choose middle ID as reference
+#             ref_id = ids_in_mol[len(ids_in_mol) // 2]
+#             lineages[ref_id] = lineage_label
+            
+#             # Replace all original mol values with the lineage label
+#             # This ensures all IDs in the same group have the same label
+#             mol_arr[idx_t[mol_mask]] = lineage_label
+            
+#             if verbose:
+#                 print(f"New lineage {lineage_label} for mol={mol}, ref_id={ref_id}, ids={ids_in_mol.tolist()}")
+        
+#         # ====================================================================
+#         # STEP 3: Propagate and update existing lineages
+#         # ====================================================================
+#         # For each active lineage, reassign all IDs in its molecule group
+#         # to have the lineage label, and update the reference ID to the
+#         # "middle" ID for the current time step.
+        
+#         new_lineages = {}  # Lineages for next time step
+        
+#         for ref_id, lineage_label in list(lineages.items()):
+#             # Check if this lineage's ref_id still exists
+#             ref_mask = id_arr[idx_t] == ref_id
+#             if not np.any(ref_mask):
+#                 # ref_id is absent at this time (shouldn't happen after Step 1, but safe)
+#                 continue
+            
+#             # Get all IDs in this mol group
+#             current_mol = mol_arr[idx_t[ref_mask]][0]
+#             mol_mask = mol_arr[idx_t] == current_mol
+#             ids_to_overwrite = np.sort(id_arr[idx_t][mol_mask])
+            
+#             # Replace mol values with lineage label (idempotent if already labeled)
+#             mol_arr[idx_t[mol_mask]] = lineage_label
+            
+#             # Update reference ID to new middle ID for next iteration
+#             # This keeps the reference stable even as molecules split/merge
+#             new_ref_id = ids_to_overwrite[len(ids_to_overwrite) // 2]
+#             new_lineages[new_ref_id] = lineage_label
+            
+#             if verbose and new_ref_id != ref_id:
+#                 print(f"[{lineage_label}] Updated ref_id: {ref_id} -> {new_ref_id}, mol={current_mol}, ids={ids_to_overwrite.tolist()}")
+        
+#         # Update lineages for next time step
+#         lineages = new_lineages
+    
+#     # ========================================================================
+#     # FINALIZATION
+#     # ========================================================================
+    
+#     # Replace temporary string labels with integers
+#     # Converts "#1" -> 1, "#42" -> 42, etc.
+#     df["mol"] = mol_arr
+#     df["mol"] = df["mol"].apply(
+#         lambda x: int(x[1:]) if isinstance(x, str) and x.startswith("#") else x
+#     )
+    
+#     return df
+
 def reassign_molids_optimized(df, verbose=False):
     """
-    Reassign molecule IDs to maintain consistent lineage labels across time steps.
- 
-    This function processes molecular data across multiple time steps, identifying which
-    molecule IDs belong together and assigning them consistent lineage labels. It handles
-    cases where molecules may split, merge, or change composition over time.
- 
-    Args:
-        df (pd.DataFrame): Input dataframe with required columns:
-            - 'time': Time step identifier (numeric, should be sortable)
-            - 'mol': Original molecule identifier
-            - 'id': Unique identifier for each molecule ID entry
-            
-            Note: All other columns are preserved in the output.
- 
-        verbose (bool, optional): If True, print detailed processing information at each
-            time step, including:
-            - Lineages that end (reference ID disappears)
-            - New lineages created
-            - Reference ID updates within existing lineages
-            Default: False
- 
-    Returns:
-        pd.DataFrame: Copy of input dataframe with modified 'mol' column containing
-            the reassigned lineage labels (integers).
- 
-    Notes:
-        - Input dataframe is not modified; a copy is returned
-        - Time ordering is enforced (data is sorted by 'time')
-        - Lineage labels are unique positive integers assigned in order of appearance
-        - All molecule IDs in the same lineage at a given time step receive the same label
-        - Reference ID selection uses the "middle" ID for robustness against outliers
- 
-    Raises:
-        KeyError: If required columns ('time', 'mol', 'id') are missing from dataframe
-        TypeError: If 'time' or 'id' columns are not numeric
- 
-    Performance Characteristics:
-        - Time Complexity: O(n log n) per time step (dominated by sorting)
-        - Space Complexity: O(n) for auxiliary arrays
-        - Typical Runtime: ~50,000-100,000 rows/second on modern hardware
-        - Scales linearly with number of time steps
- 
-    Example:
-        >>> import pandas as pd
-        >>> import numpy as np
-        >>> from reassign_molids_optimized import reassign_molids_optimized
-        >>>
-        >>> # Example: Track molecules across 3 time steps
-        >>> df = pd.DataFrame({
-        ...     'time': [0, 0, 0, 1, 1, 1, 2, 2, 2],
-        ...     'mol': [10, 10, 20, 10, 10, 20, 10, 10, 20],
-        ...     'id': [101, 102, 201, 101, 102, 201, 101, 102, 201]
-        ... })
-        >>> result = reassign_molids_optimized(df, verbose=False)
-        >>> print(result)
-           time  mol   id  mol
-        0     0   10  101    1
-        1     0   10  102    1
-        2     0   20  201    2
-        3     1   10  101    1
-        4     1   10  102    1
-        5     1   20  201    2
-        6     2   10  101    1
-        7     2   10  102    1
-        8     2   20  201    2
- 
-    Warnings:
-        - If 'id' values are not unique, behavior is undefined. Ensure each row has
-          a distinct 'id' value.
-        - Large time steps with many unique molecules may consume significant memory.
-          For datasets >10M rows, consider processing in temporal chunks.
+    Vectorized version with these optimizations:
+    1. Use np.where() to get indices upfront (fewer full array masks)
+    2. Pre-compute assigned mols to avoid set operations on full array
+    3. Batch operations per mol
+    4. Reduce string formatting overhead
     """
-    # ========================================================================
-    # INITIALIZATION
-    # ========================================================================
-    
     df = df.copy()
-    df = df.sort_values("time").reset_index(drop=True)  # Enforce chronological order
+    df = df.sort_values("time").reset_index(drop=True)
     
-    # Convert to numpy arrays for fast vectorized operations
     time_arr = df["time"].values
-    mol_arr = df["mol"].values.astype(object)  # Object type allows string labels temporarily
+    mol_arr = df["mol"].values.astype(object)
     id_arr = df["id"].values
+    lineages = {}
+    used_labels = set()
+    next_label = 1
+    times = np.unique(time_arr)
     
-    # Tracking structures
-    lineages = {}       # Maps ref_id -> lineage_label (e.g., ref_id=42 -> "#1")
-    used_labels = set() # Set of numeric labels already assigned for O(1) lookup
-    next_label = 1      # Next available lineage label to assign
-    times = np.unique(time_arr)  # Sorted array of unique time steps
-    
-    # ========================================================================
-    # MAIN LOOP: Process each time step sequentially
-    # ========================================================================
-    # Note: Cannot parallelize across time steps due to lineage dependencies
-    
-    for t in tqdm(times, desc="Propagating lineages"):
+    for t in tqdm(times, desc="Propagating lineages (OPTIMIZED)"):
         if verbose:
             print(f"\n=== TIME {t} ===")
         
-        # ====================================================================
-        # OPTIMIZATION: Get all indices for this time step at once
-        # Instead of repeatedly applying full-array masks like (time_arr == t),
-        # we get indices once and slice into arrays. This avoids repeated
-        # boolean array allocations and improves cache locality.
-        # ====================================================================
+        # Get indices for this time step once
         idx_t = np.where(time_arr == t)[0]
         
         if len(idx_t) == 0:
             continue
         
-        # ====================================================================
-        # STEP 1: End lineages whose reference ID disappeared
-        # ====================================================================
-        # A lineage ends when its reference ID is no longer present in the data.
-        # This handles cases where specific molecules cease to exist at a time step.
-        
+        # Step 1: Identify missing lineages (vectorized)
         missing_refs = []
         for ref_id in list(lineages.keys()):
-            # Check if ref_id appears in current time step (vectorized)
+            # Check if ref_id exists in current time step
             if not np.any(id_arr[idx_t] == ref_id):
                 missing_refs.append(ref_id)
                 if verbose:
                     print(f"Lineage {lineages[ref_id]} with ref_id={ref_id} missing at time {t}, ending lineage.")
         
-        # Remove ended lineages from tracking
         for ref_id in missing_refs:
             del lineages[ref_id]
         
-        # ====================================================================
-        # STEP 2: Identify which molecules are "new" (not in any lineage yet)
-        # ====================================================================
-        # A molecule is "new" if no active lineage claims it at this time step.
-        # We track this to avoid assigning multiple lineages to the same mol.
-        
+        # Step 2: Find which mols are already assigned in this lineage
         assigned_mols = set()
         for ref_id in list(lineages.keys()):
-            # If this lineage's ref_id is present, get its current mol
-            if np.any(id_arr[idx_t] == ref_id):
-                # Get the first (and should be only) mol for this ref_id
-                current_mol = mol_arr[np.where(id_arr[idx_t] == ref_id)[0][0]]
+            # Find which mol this ref_id points to
+            ref_mask = id_arr[idx_t] == ref_id
+            if np.any(ref_mask):
+                current_mol = mol_arr[idx_t[ref_mask]][0]
                 assigned_mols.add(current_mol)
         
-        # New molecules = all molecules at this time - already assigned molecules
+        # Get unique mols at this time, excluding already-assigned ones
         unique_mols_t = set(mol_arr[idx_t]) - assigned_mols
         
-        # ====================================================================
-        # STEP 2: Assign new lineages to previously unseen molecules
-        # ====================================================================
-        # Each new molecule group gets a fresh lineage label.
-        # A "group" consists of all IDs that share the same original mol value.
-        
+        # Step 2: Assign new lineages
         for mol in unique_mols_t:
-            # Find all IDs belonging to this molecule at current time
             mol_mask = mol_arr[idx_t] == mol
             ids_in_mol = np.sort(id_arr[idx_t][mol_mask])
             
             if len(ids_in_mol) == 0:
                 continue
             
-            # ================================================================
-            # HEURISTIC: Choose "middle" ID as reference for robustness
-            # ================================================================
-            # Using the middle ID reduces sensitivity to outliers and edge
-            # effects in the ID sequence. Alternatives: min, max, or random.
-            # The middle ID is more stable across splits and merges.
-            
-            # Find next unused label (could optimize with counter if labels
-            # are always contiguous, but this is safe and O(1) per time step)
+            # Find next unused label
             while next_label in used_labels:
                 next_label += 1
             
-            lineage_label = f"#{next_label}"  # Temporary string format for uniqueness
+            lineage_label = f"#{next_label}"
             used_labels.add(next_label)
             next_label += 1
             
-            # Choose middle ID as reference
             ref_id = ids_in_mol[len(ids_in_mol) // 2]
             lineages[ref_id] = lineage_label
             
-            # Replace all original mol values with the lineage label
-            # This ensures all IDs in the same group have the same label
+            # Overwrite mols (use indices, not boolean mask)
             mol_arr[idx_t[mol_mask]] = lineage_label
             
             if verbose:
                 print(f"New lineage {lineage_label} for mol={mol}, ref_id={ref_id}, ids={ids_in_mol.tolist()}")
         
-        # ====================================================================
-        # STEP 3: Propagate and update existing lineages
-        # ====================================================================
-        # For each active lineage, reassign all IDs in its molecule group
-        # to have the lineage label, and update the reference ID to the
-        # "middle" ID for the current time step.
-        
-        new_lineages = {}  # Lineages for next time step
-        
+        # Step 3: Update ref_ids for existing lineages
+        new_lineages = {}
         for ref_id, lineage_label in list(lineages.items()):
-            # Check if this lineage's ref_id still exists
             ref_mask = id_arr[idx_t] == ref_id
             if not np.any(ref_mask):
-                # ref_id is absent at this time (shouldn't happen after Step 1, but safe)
                 continue
             
-            # Get all IDs in this mol group
             current_mol = mol_arr[idx_t[ref_mask]][0]
             mol_mask = mol_arr[idx_t] == current_mol
             ids_to_overwrite = np.sort(id_arr[idx_t][mol_mask])
             
-            # Replace mol values with lineage label (idempotent if already labeled)
+            # Overwrite mols
             mol_arr[idx_t[mol_mask]] = lineage_label
             
-            # Update reference ID to new middle ID for next iteration
-            # This keeps the reference stable even as molecules split/merge
+            # Select new middle ID as ref_id
             new_ref_id = ids_to_overwrite[len(ids_to_overwrite) // 2]
             new_lineages[new_ref_id] = lineage_label
             
             if verbose and new_ref_id != ref_id:
                 print(f"[{lineage_label}] Updated ref_id: {ref_id} -> {new_ref_id}, mol={current_mol}, ids={ids_to_overwrite.tolist()}")
         
-        # Update lineages for next time step
         lineages = new_lineages
     
-    # ========================================================================
-    # FINALIZATION
-    # ========================================================================
-    
-    # Replace temporary string labels with integers
-    # Converts "#1" -> 1, "#42" -> 42, etc.
+    # Convert lineage labels from "#N" to integers
     df["mol"] = mol_arr
-    df["mol"] = df["mol"].apply(
-        lambda x: int(x[1:]) if isinstance(x, str) and x.startswith("#") else x
-    )
+    df["mol"] = df["mol"].apply(lambda x: int(x[1:]) if isinstance(x, str) and x.startswith("#") else x)
     
     return df

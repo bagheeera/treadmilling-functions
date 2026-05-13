@@ -1083,106 +1083,111 @@ def _normalize_value(val):
             return None
 
 
-def key_pooling(D, base_key, metric_fct, seeds=None, pool_params=None):
+import numpy as np
+from itertools import product
+
+def key_pooling(D, base_key, metric_fct, seeds=None, pool_params=None, verbose=False):
     """
     Pools data across multiple parameter values (seeds, etc.) while preserving shape.
-    
-    Parameters:
-    -----------
-    D : dict
-        The data dictionary.
-    base_key : tuple or dict
-        Template key to modify.
-    metric_fct : callable
-        Function(D, key) -> value (scalar, array, or matrix).
-    seeds : list, optional
-        If provided, pools across these seed values (default [1,2,3,4,5]).
-    pool_params : dict, optional
-        Dict mapping parameter names to lists of values to pool over.
-        E.g., {'seed': [1,2,3], 'trial': [0,1]}
-        If provided, seeds is ignored.
-    
-    Returns:
-    --------
-    mean_res : np.ndarray or scalar or None
-        Mean across pooled dimension (axis 0).
-    std_res : np.ndarray or scalar or None
-        Standard deviation across pooled dimension.
-    n_found : int
-        Number of runs successfully collected.
-    
-    Examples:
-    ---------
-    # Pool across seeds only
-    mean, std, n = key_pooling(D, base_key, my_func, seeds=[1,2,3,4,5])
-    
-    # Pool across seeds and trials
-    mean, std, n = key_pooling(
-        D, base_key, my_func,
-        pool_params={'seed': [1,2,3], 'trial': [0,1,2]}
-    )
     """
-    from itertools import product
-    
+
     # Determine what to pool over
     if pool_params is None:
         if seeds is None:
             seeds = [1, 2, 3, 4, 5]
         pool_params = {'seed': seeds}
-    
+
     collected_data = []
-    
+
     # Generate all combinations of pool parameters
     items = sorted(pool_params.items())
     param_names = [it[0] for it in items]
     param_values = [it[1] for it in items]
-    
+
+    if verbose:
+        print(f"[DEBUG] Pooling parameters: {pool_params}")
+        print(f"[DEBUG] Combinations to iterate over: {list(product(*param_values))}")
+
+    n_attempts = 0
+    n_success = 0
+
     for vals in product(*param_values):
         update_dict = dict(zip(param_names, vals))
+        n_attempts += 1
         try:
-            # Update the key with these parameter values
             s_key = update_key(base_key, **update_dict)
-        except:
-            # Fallback: assume base_key is already a dict-like
-            s_key = base_key.copy() if isinstance(base_key, dict) else base_key
-            for pname, pval in update_dict.items():
-                # Attempt to update the key (implementation depends on your update_key)
-                s_key = update_key(s_key, **{pname: pval})
-        
+        except Exception as e:
+            # fallback attempt
+            if isinstance(base_key, dict):
+                s_key = base_key.copy()
+                for pname, pval in update_dict.items():
+                    s_key = update_key(s_key, **{pname: pval})
+            else:
+                if verbose:
+                    print(f"[DEBUG] Failed to update key for {update_dict}: {e}")
+                continue
+
         if s_key in D:
             try:
                 val = metric_fct(D, s_key)
                 if val is not None:
                     collected_data.append(val)
-            except Exception:
-                # Skip failed calculations
-                continue
-    
+                    n_success += 1
+                    if verbose:
+                        print(f"[DEBUG] Collected for {update_dict}: {np.shape(val)}")
+                        print(f"[DEBUG] Example value (first few): {np.array(val)[:5] if np.ndim(val) else val}")
+                else:
+                    if verbose:
+                        print(f"[DEBUG] Got None for {s_key}")
+            except Exception as e:
+                if verbose:
+                    print(f"[DEBUG] Metric computation failed for {s_key}: {e}")
+        else:
+            if verbose:
+                print(f"[DEBUG] Key not found in D: {s_key}")
+
+    if verbose:
+        print(f"[DEBUG] Finished looping.")
+        print(f"[DEBUG] Attempted: {n_attempts}, Collected: {n_success}")
+
     if not collected_data:
+        if verbose:
+            print("[DEBUG] No data collected.")
         return None, None, 0
-    
+
     # Normalize all values to arrays (preserving their original shape)
     normalized_data = [_normalize_value(v) for v in collected_data]
     normalized_data = [v for v in normalized_data if v is not None]
-    
+
     if not normalized_data:
+        if verbose:
+            print("[DEBUG] No normalized data.")
         return None, None, 0
-    
-    # Stack along a new axis (axis 0)
-    # This turns N arrays of shape (M,) or (M, L) into (N, M) or (N, M, L)
+
+    if verbose:
+        print(f"[DEBUG] Collected {len(normalized_data)} arrays total")
+        for i, arr in enumerate(normalized_data):
+            print(f"    [{i}] shape={np.shape(arr)} mean={np.nanmean(arr):.4f}")
+
+    # Stack along new axis
     try:
-        data_stack = np.array(normalized_data)
-    except ValueError:
-        # If shapes don't match, try to convert to object array
-        data_stack = np.array(normalized_data, dtype=object)
-        # Fall back to simpler pooling (this case is rare)
+        data_stack = np.stack(normalized_data, axis=0)
+    except Exception as e:
+        if verbose:
+            print(f"[DEBUG] Failed to stack arrays: {e}")
+            print("[DEBUG] Shapes were:", [np.shape(a) for a in normalized_data])
+        # fallback
         return None, None, len(normalized_data)
-    
-    # Compute statistics along the pooling axis (axis 0)
+
     mean_res = np.nanmean(data_stack, axis=0)
     std_res = np.nanstd(data_stack, axis=0)
     n_found = len(normalized_data)
-    
+
+    if verbose:
+        print(f"[DEBUG] data_stack shape: {data_stack.shape}")
+        print(f"[DEBUG] mean_res shape: {mean_res.shape}, std_res shape: {std_res.shape}")
+        print(f"[DEBUG] std_res example (first few): {std_res.flat[:10]}")
+
     return mean_res, std_res, n_found
 
 

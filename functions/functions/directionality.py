@@ -100,8 +100,14 @@ def plot_finalframe_ghosts(
     ax_inset.set_yticks([])
 
 
-def bound_traces(key, ax, D, nshow=60, cmap="jet", ccolor="id", zoom_inset=False, zoom_region=None,
-                 s=.1):
+import pandas as pd
+import random
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+
+def bound_traces(key, ax, D, nshow=60, cmap="jet", ccolor="id",
+                 zoom_inset=False, zoom_region=None, s=.1,
+                 show_ids=False, id_fontsize=6, id_color='black',
+                 rng_seed=None):
     """
     Plots scatter data with an optional inset zooming into a specific region.
 
@@ -109,23 +115,51 @@ def bound_traces(key, ax, D, nshow=60, cmap="jet", ccolor="id", zoom_inset=False
     - key: str, key to access data from D.
     - ax: matplotlib axis, the main axis to plot on.
     - D: dict, contains the dataframes.
-    - nshow: int, number of random points to show.
+    - nshow: int, number of random traces to show.
     - cmap: str, colormap for the scatter plot.
     - ccolor: str, column name for coloring the scatter points.
     - zoom_inset: bool, whether to add an inset zoom.
     - zoom_region: tuple (x_min, x_max, y_min, y_max) defining the zoom region.
+    - s: float, scatter size.
+    - show_ids: bool, whether to display an ID label at each trace center.
+    - id_fontsize: int, font size of the ID labels.
+    - id_color: str, color of the ID label text.
+    - rng_seed: int or None, if provided, fixes the random seed for reproducible sampling.
     """
-    dfs = D[key]["df_bound_only.pkl"]
-    dfs = dfs[dfs["id"].isin(
-        random.sample(list(dfs["id"].unique()), nshow)
-    )]
-    scatter = ax.scatter(*dfs[["x", "y"]].values.T,
-                          c=dfs[ccolor],
-                          cmap=cmap,
-                          s=s)
+
+    # --- Optional reproducible random selection ---
+    if rng_seed is not None:
+        random.seed(rng_seed)
+
+    # Load dataframe
+    if "df_bound_only" in D[key]:
+        dfs = D[key]["df_bound_only.pkl"]
+    else:
+        dfs = pd.read_pickle(D[key]["rundir"] + "/df_bound_only.pkl.gz")
+
+    # Randomly sample traces to display
+    ids = list(dfs["id"].unique())
+    selected_ids = random.sample(ids, min(nshow, len(ids)))
+    dfs = dfs[dfs["id"].isin(selected_ids)]
+
+    # Main scatter plot
+    scatter = ax.scatter(
+        *dfs[["x", "y"]].values.T,
+        c=dfs[ccolor],
+        cmap=cmap,
+        s=s
+    )
     ax.set_aspect("equal")
 
-    # Add inset if zoom_inset is True and zoom_region is provided
+    # === Add ID labels at centers ===
+    if show_ids:
+        centers = dfs.groupby("id")[["x", "y"]].mean().reset_index()
+        for _, row in centers.iterrows():
+            ax.text(row["x"], row["y"], str(int(row["id"])),
+                    color=id_color, fontsize=id_fontsize,
+                    ha='center', va='center')
+
+    # === Add inset if requested ===
     if zoom_inset and zoom_region:
         x_min, x_max, y_min, y_max = zoom_region
         ax_inset = inset_axes(ax, width="30%", height="30%", loc="lower right")
@@ -137,7 +171,15 @@ def bound_traces(key, ax, D, nshow=60, cmap="jet", ccolor="id", zoom_inset=False
         ax_inset.set_ylim(y_min, y_max)
         ax_inset.set_xticks([])
         ax_inset.set_yticks([])
-        #ax_inset.set_title("Zoomed Inset", fontsize=8)
+
+        if show_ids:
+            centers_inset = centers.query("x >= @x_min and x <= @x_max and y >= @y_min and y <= @y_max")
+            for _, row in centers_inset.iterrows():
+                ax_inset.text(row["x"], row["y"], str(int(row["id"])),
+                              color=id_color, fontsize=id_fontsize-1,
+                              ha='center', va='center')
+
+    return scatter
 
 def alpha_hist(key, ax, overlay, D, specifylabel=False, legendtitle=False,bins=None,
                showlegend=True,

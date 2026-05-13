@@ -174,7 +174,8 @@ def render_time_movie(
     clip_normal, clip_origin,
     image_scale=3,
     select_view=None,
-    render_movie=True
+    render_movie=True,
+    clim=None,
 ):
     """
     Render a movie over time using pre-computed r_snapshots from histogram_mesh
@@ -285,7 +286,8 @@ def render_time_movie(
             scalars='radius',
             cmap='Purples_r',
             smooth_shading=True,
-            show_scalar_bar=False
+            show_scalar_bar=False,
+            clim=clim,
         )
 
         plotter.camera.position = cam_dict['position']
@@ -805,7 +807,7 @@ def front_render_display(
     D,
     key,
     ax,
-    label="front",
+    img_fname="septum_front",
     crop=(300, -100, 500, -500),
     show_inset=False,
     inset_width="40%",
@@ -861,7 +863,7 @@ def front_render_display(
     # 1. Display PNG image
     # ---------------------------------------------------------
     rundir = D[key]["rundir"]
-    fname = f"{rundir}/{rundir.split('/')[-2]}septum_{label}.png"
+    fname = f"{rundir}/{rundir.split('/')[-2]}{img_fname}.png"
     fct.midcell_transport.display_png(fname, ax, crop=crop)
 
     # ---------------------------------------------------------

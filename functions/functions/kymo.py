@@ -322,7 +322,7 @@ plot_sim_exp_comparison(
 
 
 def lifetimes_plot(key, ax, D, overlay=None, convert_to_probab=True,
-        expcolor="k", show_means=True,
+        expcolor="k", color=None, show_means=True, marker="o",
         sim_lw=1,
         leg_title=None
         ):
@@ -352,9 +352,10 @@ def lifetimes_plot(key, ax, D, overlay=None, convert_to_probab=True,
             centres = (edges[:-1] + edges[1:]) / 2
             
 
-            lines = ax.plot(centres, probs, #color="tab:blue", 
+            lines = ax.plot(centres, probs, color=color, #color="tab:blue", 
                             lw=sim_lw,
-                    marker="o", label="Simulation" if overlay is None else overlay)
+                    marker=marker, 
+                    label="Simulation" if overlay is None else overlay)
             ax.plot(*exp.T, color=expcolor,
                     label="Experiment" if overlay is None else None, marker="o")
             if show_means:
