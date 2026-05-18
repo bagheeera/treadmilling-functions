@@ -467,7 +467,8 @@ def create_footer(custompath=None):
     return footer_text
 
 def save_fig(fig, name, sources, notes="", footersize=4, notebook_name="",
-             result_folderpath="../results"):
+             result_folderpath="../results",
+             aspdf=False):
     """
     Save a matplotlib figure along with descriptive metadata for traceability.
 
@@ -522,6 +523,8 @@ def save_fig(fig, name, sources, notes="", footersize=4, notebook_name="",
     # Save figure with descriptive filenames
     fig.savefig(out / f"{name}.png", dpi=300, bbox_inches="tight")
     fig.savefig(out / f"{name}.svg")
+    if aspdf:
+        fig.savefig(out / f"{name}.pdf", bbox_inches="tight")
 
     def yaml_safe(obj):
         if isinstance(obj, dict):
