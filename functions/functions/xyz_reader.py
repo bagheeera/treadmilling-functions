@@ -139,7 +139,7 @@ def process_chunk(args):
     # Determine current columns
     cols = list(df_chunk.columns)
 
-    # Box bounds are computed as before
+    # Box bounds are computed as before (requires x/y columns)
     x_min = df_chunk['x'].min()
     x_max = df_chunk['x'].max()
     y_min = df_chunk['y'].min()
@@ -156,16 +156,22 @@ ITEM: BOX BOUNDS pp pp pp
 -4.2500000000000000e+00 4.2500000000000000e+00
 ITEM: ATOMS {' '.join(cols)}
 """
-
     lines.append(header)
 
-    # Format rows according to the recognized columns
+    # Format each row
     for _, row in df_chunk.iterrows():
         formatted = []
-        for i, c in enumerate(cols):
+        for c in cols:
             v = row[c]
-            # Choose float or int formatting however you like
-            formatted.append(str(int(v)) if isinstance(v, (int, float)) and i < 4 else f"{v:.2f}")
+            if c in ("id", "mol"):
+                # integer formatting for atom id and molecule id
+                formatted.append(f"{int(v)}")
+            elif isinstance(v, (int, float)):
+                # float formatting for everything else numeric
+                formatted.append(f"{v:.2f}")
+            else:
+                # fallback for strings or other data types
+                formatted.append(str(v))
         lines.append(" ".join(formatted) + "\n")
 
     return "".join(lines)
