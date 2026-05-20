@@ -264,16 +264,18 @@ def scatter_fct(
             yvals = D_ql.loc[(np.abs(D_ql["y"]) < abs(ql_config.get('quantile_range', quantile_range)[1]))]["y"] * scale_xy
             for q in quantiles:
                 qv = np.quantile(yvals, q)
-                ax.axhline(qv, ls=ql_config.get('ls', '--'),
-                          lw=1, color=ql_config['color'],
-                          alpha=ql_config.get('alpha', 0.7))
+                if show_quantiles:
+                    ax.axhline(qv, ls=ql_config.get('ls', '--'),
+                            lw=1, color=ql_config['color'],
+                            alpha=ql_config.get('alpha', 0.7))
         elif axis == 'x':
             xvals = D_ql.loc[(np.abs(D_ql["x"]) < abs(ql_config.get('quantile_range', quantile_range)[1]))]["x"] * scale_xy
             for q in quantiles:
                 qv = np.quantile(xvals, q)
-                ax.axvline(qv, ls=ql_config.get('ls', '--'),
-                          lw=1, color=ql_config['color'],
-                          alpha=ql_config.get('alpha', 0.7))
+                if show_quantiles:
+                    ax.axvline(qv, ls=ql_config.get('ls', '--'),
+                            lw=1, color=ql_config['color'],
+                            alpha=ql_config.get('alpha', 0.7))
     
     # --- Axes ---
     ax.set_aspect("equal")

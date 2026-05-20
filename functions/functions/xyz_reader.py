@@ -135,30 +135,39 @@ def format_row(row):
 def process_chunk(args):
     t, df_chunk = args
     lines = []
-    
-    # Calculate dynamic box bounds for this timestep
+
+    # Determine current columns
+    cols = list(df_chunk.columns)
+
+    # Box bounds are computed as before
     x_min = df_chunk['x'].min()
     x_max = df_chunk['x'].max()
     y_min = df_chunk['y'].min()
     y_max = df_chunk['y'].max()
-    
-    # Format box bounds with scientific notation (matching your original format)
-    header = HEADER_TEMPLATE.format(
-        x_min=f'{x_min:.16e}',
-        x_max=f'{x_max:.16e}',
-        y_min=f'{y_min:.16e}',
-        y_max=f'{y_max:.16e}'
-    )
-    
-    lines.append(
-        header
-        .replace("YYY", str(t))
-        .replace("XXX", str(len(df_chunk)))
-    )
-    
+
+    # Dynamic header text
+    header = f"""ITEM: TIMESTEP
+{t}
+ITEM: NUMBER OF ATOMS
+{len(df_chunk)}
+ITEM: BOX BOUNDS pp pp pp
+{x_min:.16e} {x_max:.16e}
+{y_min:.16e} {y_max:.16e}
+-4.2500000000000000e+00 4.2500000000000000e+00
+ITEM: ATOMS {' '.join(cols)}
+"""
+
+    lines.append(header)
+
+    # Format rows according to the recognized columns
     for _, row in df_chunk.iterrows():
-        lines.append(format_row(row) + "\n")
-    
+        formatted = []
+        for i, c in enumerate(cols):
+            v = row[c]
+            # Choose float or int formatting however you like
+            formatted.append(str(int(v)) if isinstance(v, (int, float)) and i < 4 else f"{v:.2f}")
+        lines.append(" ".join(formatted) + "\n")
+
     return "".join(lines)
 
 # ---------------------------------------------------------------------
