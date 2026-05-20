@@ -163,7 +163,7 @@ ITEM: ATOMS {' '.join(cols)}
         formatted = []
         for c in cols:
             v = row[c]
-            if c in ("id", "mol"):
+            if c in ("id", "mol", "type"):
                 # integer formatting for atom id and molecule id
                 formatted.append(f"{int(v)}")
             elif isinstance(v, (int, float)):
