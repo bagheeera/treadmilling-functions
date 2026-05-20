@@ -200,8 +200,11 @@ def generate_configuration(Lx, n_synthases, run_dir, add_grid=True, initial_synt
     else:
         massdict = {**DEFAULT_MASSDICT, **massdict}
 
+    n_atomtypes = len(DEFAULT_MASSDICT)
+    Lhalved = Lx
+    yLhalved = yboxsize if yboxsize else Lhalved
     atom_table = generate_atom_table(
-        yboxsize=yboxsize,
+        yboxsize=yboxsize if yboxsize else Lhalved,
         Lx=Lx, n_synthases=n_synthases, add_grid=add_grid,
         initial_synth_ptype=initial_synth_ptype, zpos=zpos,
         m_process=m_process, min_dist=min_dist, sidelength=sidelength,
@@ -215,9 +218,7 @@ def generate_configuration(Lx, n_synthases, run_dir, add_grid=True, initial_synt
     )
 
     n_atoms = len(atom_table)
-    n_atomtypes = len(DEFAULT_MASSDICT)
-    Lhalved = Lx
-    yLhalved = yboxsize if yboxsize else Lhalved
+
 
     gridstring = "\n".join(" ".join(map(str, entry)) for entry in atom_table)
     masses_block = "\n".join(f"{k} {v}" for k, v in massdict.items())
