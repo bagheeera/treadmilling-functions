@@ -111,8 +111,12 @@ def load_pickles_into_D(D, pkl_files, prm_select=None):
         rundir = Path(D[key]["rundir"])
         for fname in pkl_files:
             target = rundir / fname
-            subkey = Path(fname).stem  # remove extension(s)
-            
+            # Properly remove *all* suffixes (e.g. .pkl.gz → A)
+            p = Path(fname)
+            subkey = p.name
+            for s in reversed(p.suffixes):  # remove from last to first
+                subkey = subkey.removesuffix(s)
+            # print("final subkey:", subkey)
             if subkey in D[key]:
                 continue  # already loaded
             
