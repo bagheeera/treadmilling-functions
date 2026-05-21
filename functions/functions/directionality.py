@@ -266,3 +266,106 @@ def compute_huet_asymmetry_from_array(coords):
     den = 2 * (l1**2 + l2**2)**2
     val = 1 - (num / den)
     return -np.log(np.clip(val, 1e-10, 1.0))
+
+from tqdm.notebook import tqdm
+def calculate_density_overlap_grouped(
+    df, 
+    type_groups,
+    x_bins=20, 
+    y_bins=20, 
+    metric='intersection'
+):
+    """
+    Calculate overlap between grouped spatial densities across all time slices.
+    
+    Parameters:
+    -----------
+    df : DataFrame with columns [type, time, x, y]
+    type_groups : list of lists
+        E.g. [[1,2,3], [6], [7,8]] groups types and compares all pairs
+    x_bins, y_bins : int, number of bins per axis
+    metric : str, 'bhattacharyya'|'hellinger'|'intersection'|'kl_divergence'
+    
+    Returns:
+    --------
+    pandas.DataFrame with columns:
+      - time
+      - group_pair (e.g., "Group_0 vs Group_1")
+      - overlap
+      - n_samples_g1, n_samples_g2
+    """
+    
+    results = []
+    
+    # Process each time slice
+    for time in tqdm(sorted(df['time'].unique())):
+        subset = df[df['time'] == time]
+        
+        group_densities = {}
+        group_samples = {}
+        bin_edges = {'x': None, 'y': None}
+        
+        # Bin each group
+        for group_idx, type_list in enumerate(type_groups):
+            group_data = subset[subset['type'].isin(type_list)]
+            group_samples[group_idx] = len(group_data)
+            
+            if len(group_data) == 0:
+                group_densities[group_idx] = None
+                continue
+            
+            density_2d, xedges, yedges = np.histogram2d(
+                group_data['x'], 
+                group_data['y'],
+                bins=[x_bins, y_bins]
+            )
+            
+            # Normalize to PDF
+            density_2d = density_2d / density_2d.sum()
+            group_densities[group_idx] = density_2d
+            bin_edges['x'] = xedges
+            bin_edges['y'] = yedges
+        
+        # Pairwise comparisons
+        group_indices = list(group_densities.keys())
+        
+        for i, g1 in enumerate(group_indices):
+            for j, g2 in enumerate(group_indices):
+                if i < j:
+                    d1 = group_densities[g1]
+                    d2 = group_densities[g2]
+                    
+                    if d1 is None or d2 is None:
+                        overlap_val = np.nan
+                    else:
+                        d1_flat = d1.flatten()
+                        d2_flat = d2.flatten()
+                        
+                        if metric == 'bhattacharyya':
+                            overlap_val = np.sum(np.sqrt(d1_flat * d2_flat))
+                        
+                        elif metric == 'hellinger':
+                            bc = np.sum(np.sqrt(d1_flat * d2_flat))
+                            overlap_val = np.sqrt(1 - bc)
+                        
+                        elif metric == 'intersection':
+                            overlap_val = np.sum(np.minimum(d1_flat, d2_flat))
+                        
+                        elif metric == 'kl_divergence':
+                            eps = 1e-10
+                            kl_pq = np.sum(d1_flat * np.log((d1_flat + eps) / 
+                                                            (d2_flat + eps)))
+                            kl_qp = np.sum(d2_flat * np.log((d2_flat + eps) / 
+                                                            (d1_flat + eps)))
+                            overlap_val = (kl_pq + kl_qp) / 2
+                    
+                    results.append({
+                        'time': time,
+                        'group_pair': f'Group_{g1}_vs_Group_{g2}',
+                        'overlap': overlap_val,
+                        'n_samples_g1': group_samples[g1],
+                        'n_samples_g2': group_samples[g2]
+                    })
+    
+    return pd.DataFrame(results)
+
