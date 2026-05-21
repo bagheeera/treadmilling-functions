@@ -19,6 +19,7 @@ import gzip
 from tueplots import cycler
 from tueplots.constants import markers
 from tueplots.constants.color import palettes
+from jinja2 import Environment, FileSystemLoader
 
 plt.rcParams.update(
     cycler.cycler(
