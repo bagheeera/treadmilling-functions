@@ -106,6 +106,7 @@ def plot_data_(prm_sets, D, grid_params, overlay_params, plot_function, check_ke
                                sharex=sharex, 
                                sharey=sharey, 
                                figsize=figsize)
+        fig_empty = True
         
         fig.subplots_adjust(wspace=.4)
         fig.suptitle(fig_title, y=0.999)
@@ -133,6 +134,7 @@ def plot_data_(prm_sets, D, grid_params, overlay_params, plot_function, check_ke
                         if print_keys:
                             print(key_tuple)
                         plot_function(key_tuple, subplot_ax, overlay)
+                        fig_empty = False # at least one plot was drawn
                     else:
                         subplot_ax.axis("off")
                 if renamedict:
@@ -180,6 +182,9 @@ def plot_data_(prm_sets, D, grid_params, overlay_params, plot_function, check_ke
             ax.legend(title=legendtitle)
 
         fig.tight_layout()
+        if fig_empty:
+            plt.close(fig)   # Don’t display or return it
+            continue         # Skip to the next figure
         if return_fig:
             return fig
         else:

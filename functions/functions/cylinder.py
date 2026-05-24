@@ -500,7 +500,7 @@ def diam_plot(
     return ax
 
 
-def pooled_diam_plot(D, prm, key, ax, overlay):
+def pooled_diam_plot(D, prm, key, ax, overlay, vline_pos=None):
     # Load time–radius data
     D[key]["t_r"] = pd.read_pickle(D[key]["rundir"] + "/t_r.pkl")
 
@@ -514,10 +514,15 @@ def pooled_diam_plot(D, prm, key, ax, overlay):
 
     # --- Assemble pooled data structures -----------------------------------
     D["pooled"] = {}
-    D["pooled"]["t_r"] = [[t, r] for t, r in zip(
-        [v[0] for v in D[key]["t_r"]], mean_r)]
-    D["pooled"]["t_r_std"] = [[t, s] for t, s in zip(
-        [v[0] for v in D[key]["t_r"]], std_r)]
+    try:
+        D["pooled"]["t_r"] = [[t, r] for t, r in zip(
+            [v[0] for v in D[key]["t_r"]], mean_r)]
+        D["pooled"]["t_r_std"] = [[t, s] for t, s in zip(
+            [v[0] for v in D[key]["t_r"]], std_r)]
+    except Exception as e:
+        print(f"Error assembling pooled data: {e}")
+        print("Falling back to unpooled data for plotting.")
+        D["pooled"]["t_r"] = D[key]["t_r"]
 
     # --- Plot using your existing diameter plotter -------------------------
     arrt_value = dict(key)["arrt"]
@@ -528,6 +533,7 @@ def pooled_diam_plot(D, prm, key, ax, overlay):
         ax,
         overlay=overlay, axislabels=None,
         plot_std=True,
+        vline_pos=vline_pos
     )
 
 
