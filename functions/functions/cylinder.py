@@ -545,7 +545,8 @@ def render_clipping_movie(mesh, filename, cam_dict,
                           clip_normal=[1, 0, 0],
                           scalars='radius', cmap='Purples_r',
                           demo=False,
-                          show_scalar_bar=True):
+                          show_scalar_bar=True,
+                          clim=None,):
     import pyvista as pv
     """
     Renders a movie of a clipping plane passing through a mesh.
@@ -618,7 +619,8 @@ def render_clipping_movie(mesh, filename, cam_dict,
                          scalars=scalars,
                          cmap=cmap,
                          smooth_shading=True,
-                         show_scalar_bar=show_scalar_bar)
+                         show_scalar_bar=show_scalar_bar,
+                         clim=clim,)
         #plotter.add_text(f'Clip at x={origin_x:.2f}',
         #                 name='origin_label', position='upper_left')
         plotter.camera.position    = cam_dict['position']
@@ -926,3 +928,65 @@ def front_render_display(
         # ax_ins.legend(fontsize=6, loc="best")
 
     return ax
+
+
+import numpy as np
+import pandas as pd
+
+def map_to_cylinder(df, fulldf=None, radial_offset=None, NM_PER_SU=1.0):
+    """
+    Map particle x-positions onto a cylinder by converting x → θ (theta), per time point.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Must contain columns 'x', 'y', 'type', 'time'.
+    fulldf : pd.DataFrame, optional
+        Reference dataframe to determine x-range (defaults to df if None).
+    radial_offset : dict, optional
+        {particle_type: offset_nm} — per-type radial offsets in nm.
+    NM_PER_SU : float
+        Conversion factor from simulation units to nm.
+
+    Returns
+    -------
+    pd.DataFrame
+        Columns: ['time','x','y','z','theta','y_nm','R_nm','type',...]
+    """
+
+    def _map_single_frame(frame):
+        """Map a single time slice to cylindrical coordinates."""
+        ref = fulldf[fulldf["time"] == frame["time"].iloc[0]] if fulldf is not None else frame
+
+        x_min = ref["x"].min()
+        x_max = ref["x"].max()
+        box_width_su = x_max - x_min
+        R_nm = box_width_su * NM_PER_SU / (2 * np.pi)
+
+        theta = ((frame["x"].values - x_min) / box_width_su) * 2 * np.pi
+
+        # base radius
+        r = np.full(len(frame), R_nm)
+        if radial_offset is not None:
+            for ptype, offset_nm in radial_offset.items():
+                mask = frame["type"].values == ptype
+                r[mask] += offset_nm
+
+        out = frame.copy()
+        out["theta"] = theta
+        out["y_nm"] = frame["y"].values * NM_PER_SU
+        out["x"] = r * np.cos(theta)
+        out["y"] = r * np.sin(theta)
+        out["z"] = frame["y"].values * NM_PER_SU
+        out["R_nm"] = R_nm
+        return out
+
+    # ---- Apply per-time ----
+    if "time" not in df.columns:
+        raise ValueError("Input dataframe must contain a 'time' column.")
+    
+    mapped = pd.concat(
+        [_map_single_frame(g) for _, g in df.groupby("time")],
+        ignore_index=True
+    )
+    return mapped
