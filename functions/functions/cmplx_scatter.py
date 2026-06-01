@@ -720,6 +720,12 @@ from moviepy.editor import VideoClip
 from moviepy.video.io.bindings import mplfig_to_npimage
 
 # tested in /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/0__ring/M__cmplx_cnstrct_intermediate/A_staticring/B__arrest/notebooks/processive_traces_movie.ipynb
+import numpy as np
+import matplotlib.pyplot as plt
+from moviepy.editor import VideoClip
+from moviepy.video.io.bindings import mplfig_to_npimage
+
+
 def render_movie_with_trace(
     df,
     tag,
@@ -734,48 +740,39 @@ def render_movie_with_trace(
     display_time=True,
     display_legend=True,
     figsize=(8, 6),
+    inactive_color="#f478aaff",   # <-- color when selected particles are off-type
 ):
     """
-    Render an animation showing scatter + traces of a random subset (N_show)
-    of the chosen trace_types, while keeping all other types fully visible.
+    Show all particles in scatter; draw traces only when selected subset
+    has a type in `trace_types`.  Selected particles use `inactive_color`
+    when in other states.
 
     Parameters
     ----------
-    df : pd.DataFrame
-        Must contain ['time','x','y','type'] and ideally 'id' that identifies each particle.
-    tag : str
-        Output filename (without ".mp4").
-    trace_types : list[int]
-        Particle type numbers whose traces to display.
-    particle_config : dict or None
-        Dict describing per-type plotting settings.
-    N_show : int
-        Number of particles (total across trace_types) to show (and trace).
-    duration, fps, dpi, ylim, xlim, display_time, display_legend, figsize
-        Standard plotting / movie parameters.
+    df : pd.DataFrame  (columns: ['time','x','y','type','id'])
     """
 
-    # ------------------- Default particle config -------------------
+    # ---------------- Default particle config ----------------
     if particle_config is None:
         particle_config = {
-            'filaments': {
-                'types': [1, 2, 3],
-                'color': '#4cc9f0',
-                'marker': 'o',
-                's': 10,
-                'label': 'FtsZ',
+            "filaments": {
+                "types": [1, 2, 3],
+                "color": "#4cc9f0",
+                "marker": "o",
+                "s": 10,
+                "label": "FtsZ",
             },
-            'synthase': {
-                'types': [11],
-                'color': '#f72585',
-                'marker': 's',
-                's': 15,
-                'label': 'Synthase',
-                'trace_color': '#397387ff',
+            "synthase": {
+                "types": [11],
+                "color": "#f72585",
+                "marker": "s",
+                "s": 15,
+                "label": "Synthase",
+                "trace_color": "#397387ff",
             },
         }
 
-    # ------------------- Select subset of trace types -------------------
+    # ---------------- Randomly choose trace IDs ----------------
     subset = df[df["type"].isin(trace_types)]
     unique_ids = subset["id"].unique()
     if len(unique_ids) > N_show:
@@ -786,25 +783,20 @@ def render_movie_with_trace(
 
     print(f"Selected {len(show_ids)} trace particle ids: {show_ids}")
 
-    # --- df_scatter = all others + selected subset of trace types ---
-    others = df[~df["type"].isin(trace_types)]
-    trace_subset = df[df["id"].isin(show_ids) & df["type"].isin(trace_types)]
-    df_scatter = pd.concat([others, trace_subset], ignore_index=True).sort_values("time")
+    # Selected (for potential tracing) and others
+    df_show = df.copy()                          # all appear in scatter
+    df_trace = df[df["id"].isin(show_ids)].copy()  # only selected IDs are traced
 
-    # --- only the selected subset participates in traces ---
-    df_trace = trace_subset.copy()
-
-    # ------------------- Style maps from particle_config -------------------
-    color_map = {}
-    label_map = {}
-    lw_map = {}
+    # ---------------- Style maps from particle_config ----------------
+    color_map, trace_color_map, label_map, lw_map = {}, {}, {}, {}
     for name, cfg in particle_config.items():
         for ttp in cfg.get("types", []):
-            color_map[ttp] = cfg.get("trace_color", cfg.get("color", "#397387ff"))
+            color_map[ttp] = cfg.get("color", "#397387ff")
+            trace_color_map[ttp] = cfg.get("trace_color", color_map[ttp])
             label_map[ttp] = cfg.get("label", str(ttp))
             lw_map[ttp] = cfg.get("lw", 2.5)
 
-    # ------------------- Figure setup -------------------
+    # ---------------- Figure setup ----------------
     plt.rcParams["figure.dpi"] = dpi
     fig, ax = plt.subplots(figsize=figsize)
     if xlim is not None:
@@ -813,9 +805,9 @@ def render_movie_with_trace(
     ax.set_xlabel("Cell circumference (nm)")
     ax.set_ylabel("Long cell axis (nm)")
 
-    # ------------------- Time mapping -------------------
-    t_min = df_scatter["time"].values[0]
-    t_max = df_scatter["time"].values[-1]
+    # ---------------- Time mapping ----------------
+    t_min = df_show["time"].values[0]
+    t_max = df_show["time"].values[-1]
     T_range = t_max - t_min
 
     def clear_ax_artists(ax):
@@ -826,18 +818,17 @@ def render_movie_with_trace(
         for t in list(ax.texts):
             t.remove()
 
-    # ------------------- make_frame -------------------
+    # ---------------- make_frame ----------------
     def make_frame(t_video):
         t_data = t_min + T_range * (t_video / duration)
-        closest_time = df_scatter["time"].values[
-            np.abs(df_scatter["time"].values - t_data).argmin()
+        closest_time = df_show["time"].values[
+            np.abs(df_show["time"].values - t_data).argmin()
         ]
-
         clear_ax_artists(ax)
 
-        # ---- Scatter (all particles but only selected subset of trace_types) ----
+        # ---- Scatter for all particles ----
         scatter_fct(
-            df_scatter,
+            df_show,
             ax,
             closest_time,
             particle_config=particle_config,
@@ -848,13 +839,31 @@ def render_movie_with_trace(
             show_quantiles=False,
         )
 
-        # ---- Draw traces for selected IDs only ----
-        MAX_DIST = 25.0   # threshold distance to break the line
-        SCALE = 5.0       # position scaling factor
+        # ---- Highlight the selected particles in inactive_color when off-type ----
+        frame_df = df_show[df_show["time"] == closest_time]
+        offsel = frame_df[
+            frame_df["id"].isin(show_ids) & ~frame_df["type"].isin(trace_types)
+        ]
+        if not offsel.empty:
+            ax.scatter(
+                5 * offsel["x"],
+                5 * offsel["y"],
+                c=inactive_color,
+                s=20,
+                alpha=0.9,
+                marker="s",
+                label="inactive selected",
+            )
+
+        # ---- Traces for selected IDs while in trace_types ----
+        MAX_DIST = 25.0
+        SCALE = 5.0
 
         for pid in show_ids:
             pdata = df_trace[
-                (df_trace["id"] == pid) & (df_trace["time"] <= closest_time)
+                (df_trace["id"] == pid)
+                & (df_trace["time"] <= closest_time)
+                & (df_trace["type"].isin(trace_types))
             ]
             if pdata.empty:
                 continue
@@ -874,28 +883,26 @@ def render_movie_with_trace(
             segments.append(slice(start, len(px)))
 
             ptype = pdata["type"].iloc[0]
-            color = color_map.get(ptype, "#397387ff")
+            color = trace_color_map.get(ptype, "#397387ff")
             lw = lw_map.get(ptype, 2.5)
             label = label_map.get(ptype, f"type {ptype}")
 
             for seg in segments:
-                if (seg.stop - seg.start) < 2:
+                if seg.stop - seg.start < 2:
                     continue
                 ax.plot(px[seg], py[seg],
                         lw=lw, alpha=0.5, color=color, label=label)
 
-        # ---- Optional time text ----
+        # ---- Optional overlays ----
         if display_time:
             ax.text(
                 0.8, 0.9,
                 f"t = {closest_time:.0f} s",
                 transform=ax.transAxes,
-                ha="center",
-                va="center",
+                ha="center", va="center",
                 bbox=dict(facecolor="white", alpha=0.8, edgecolor="white"),
             )
 
-        # ---- Optional legend ----
         if display_legend:
             handles, labels = ax.get_legend_handles_labels()
             by_label = dict(zip(labels, handles))
@@ -904,6 +911,6 @@ def render_movie_with_trace(
         fig.canvas.draw_idle()
         return mplfig_to_npimage(fig)
 
-    # ------------------- Write movie file -------------------
+    # ---------------- Write movie file ----------------
     animation = VideoClip(make_frame, duration=duration)
     animation.write_videofile(f"{tag}.mp4", fps=fps, codec="libx264", audio=False)
