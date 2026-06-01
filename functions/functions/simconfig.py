@@ -107,7 +107,7 @@ base = {
 
     # ---- Geometry bins for constriction ----
     "Nangularbins": 200,  # Number of circumferential bins
-    "strandheight": 3.0
+    "strandheight": 3.0 # # see https://journals.asm.org/doi/10.1128/jb.186.18.5978-5987.2004 and https://www.nature.com/articles/ncomms15370
 }
 # print(os.getcwd())
 import subprocess
