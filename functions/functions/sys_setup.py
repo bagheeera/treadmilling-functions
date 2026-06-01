@@ -200,7 +200,7 @@ def generate_configuration(Lx, n_synthases, run_dir, add_grid=True, initial_synt
     else:
         massdict = {**DEFAULT_MASSDICT, **massdict}
 
-    n_atomtypes = len(DEFAULT_MASSDICT)
+    n_atomtypes = len(massdict)
     Lhalved = Lx
     yLhalved = yboxsize if yboxsize else Lhalved
     atom_table = generate_atom_table(
