@@ -701,23 +701,8 @@ def render_movie_with_hist(
     animation.write_videofile(f"{tag}.mp4", fps=fps, codec="libx264", audio=False)
 
 
-import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib import gridspec
-from moviepy.editor import VideoClip
-from moviepy.video.io.bindings import mplfig_to_npimage
 
 
-import numpy as np
-import matplotlib.pyplot as plt
-from moviepy.editor import VideoClip
-from moviepy.video.io.bindings import mplfig_to_npimage
-
-
-import numpy as np
-import matplotlib.pyplot as plt
-from moviepy.editor import VideoClip
-from moviepy.video.io.bindings import mplfig_to_npimage
 
 # tested in /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/0__ring/M__cmplx_cnstrct_intermediate/A_staticring/B__arrest/notebooks/processive_traces_movie.ipynb
 def render_movie_with_trace(
@@ -737,6 +722,10 @@ def render_movie_with_trace(
     inactive_color="#f478aaff",
     inactive_alpha=0.9,
 ):
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from moviepy.editor import VideoClip
+    from moviepy.video.io.bindings import mplfig_to_npimage
     if particle_config is None:
         particle_config = {
             "filaments": {
