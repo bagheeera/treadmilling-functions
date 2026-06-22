@@ -133,7 +133,7 @@ def bound_traces(key, ax, D, nshow=60, cmap="jet", ccolor="id",
 
     # Load dataframe
     if "df_bound_only" in D[key]:
-        dfs = D[key]["df_bound_only.pkl"]
+        dfs = D[key]["df_bound_only"]
     else:
         dfs = pd.read_pickle(D[key]["rundir"] + "/df_bound_only.pkl.gz")
 
