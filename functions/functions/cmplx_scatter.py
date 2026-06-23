@@ -540,6 +540,7 @@ def render_movie_with_hist(
     figsize=(12, 5),
     inactive_color="#f478aaff",
     inactive_alpha=0.9,
+    trace_fade_time=None,     # seconds of visible trace)
 ):
     """
     Render an animation of particle positions with optional histogram and trajectory tracing.
@@ -654,7 +655,7 @@ def render_movie_with_hist(
             alpha_map[ttp] = cfg.get("alpha", 1.0)
             label_map[ttp] = cfg.get("label", str(ttp))
             lw_map[ttp] = cfg.get("lw", 2.5)
-            trace_alpha_map[ttp] = cfg.get("trace_alpha", 1.0)
+            trace_alpha_map[ttp] = cfg.get("trace_alpha", .4)
             trace_zorder_map[ttp] = cfg.get("trace_zorder", zorder_map[ttp] - 0.5)
 
     # --- Figure layout ---
@@ -722,16 +723,23 @@ def render_movie_with_hist(
         if trace_types and len(show_ids) > 0:
             MAX_DIST = 25.0
             for pid in show_ids:
+                # select data up to current frame
                 pdata = df_trace[
                     (df_trace["id"] == pid)
                     & (df_trace["time"] <= closest_time)
                     & (df_trace["type"].isin(trace_types))
-                ]
+                ].copy()
+
+                # Apply trace fade lifetime
+                if trace_fade_time is not None:
+                    pdata = pdata[pdata["time"] >= closest_time - trace_fade_time]
+
                 if pdata.empty:
                     continue
                 pdata = pdata.sort_values("time")
                 px = SCALE * pdata["x"].values
                 py = SCALE * pdata["y"].values
+
                 diffs = np.sqrt(np.diff(px)**2 + np.diff(py)**2)
                 break_idx = np.where(diffs > MAX_DIST)[0]
                 segs, start = [], 0
@@ -745,12 +753,15 @@ def render_movie_with_hist(
                 lw = lw_map.get(ptype, 2.5)
                 talpha = trace_alpha_map.get(ptype, 1.0)
                 tz = trace_zorder_map.get(ptype, 1.5)
+
                 for seg in segs:
                     if seg.stop - seg.start < 2:
                         continue
-                    ax_scatter.plot(px[seg], py[seg],
-                                    lw=lw, color=color,
-                                    alpha=talpha, zorder=tz)
+                    ax_scatter.plot(
+                        px[seg], py[seg],
+                        lw=lw, color=color,
+                        alpha=talpha, zorder=tz,
+                    )
 
         # ---- Optional histogram side plot ----
         if with_histogram and ax_hist is not None:
