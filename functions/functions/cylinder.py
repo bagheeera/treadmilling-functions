@@ -354,7 +354,8 @@ def diam_plot(
     t_model_max=50,
     plot_std=False,
     vline_pos=None,
-    verbose=False
+    verbose=False,
+    plot_coltharp=True,
 ):
     """
     Plot diameter (default) or radius evolution over time, with optional inset,
@@ -452,7 +453,8 @@ def diam_plot(
     # ---------------------------
     # Plot model curve
     # ---------------------------
-    ax.plot(t_model, val_model, color=coltharp_color, label=label or coltharp_label, ls="--")
+    if plot_coltharp:
+        ax.plot(t_model, val_model, color=coltharp_color, label=label or coltharp_label, ls="--")
 
     # ---------------------------
     # Optional vertical line(s)
