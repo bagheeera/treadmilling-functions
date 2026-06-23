@@ -512,196 +512,289 @@ def make_arrow_orientation_bidirectional(
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 import numpy as np
+from moviepy.editor import VideoClip
+from moviepy.video.io.bindings import mplfig_to_npimage
 
 # from fct.cmplx_scatter import scatter_fct
-
-
 def render_movie_with_hist(
     df,
     tag,
+    trace_types=None,
     particle_config=None,
     histogram_config=None,
+    with_histogram=True,
+    N_show=10,
     duration=10,
     fps=30,
     dpi=150,
-    ylim=(-150, 150), 
+    ylim=(-150, 150),
+    xlim=(-200, 200),
     histogram_bins=30,
     histogram_range=None,
-    hist_timeavg_range=None,
     width_ratios=(3, 1),
     wspace=0.05,
     height_scale=0.45,
-    t_window=3,
     hist_xlim=0.021,
     display_time=True,
     display_legend=True,
-    xlim=(-200,200),
     figsize=(12, 5),
+    inactive_color="#f478aaff",
+    inactive_alpha=0.9,
 ):
     """
-    Render animation with scatter plot and histograms using scatter_fct.
-    
+    Render an animation of particle positions with optional histogram and trajectory tracing.
+
     Parameters
     ----------
     df : pd.DataFrame
-        Data with columns: time, x, y, type, etc.
+        DataFrame containing columns such as 'time', 'x', 'y', 'type', and 'id'.
     tag : str
-        Output filename (without .mp4)
+        Path or base filename for the output video ('.mp4' will be appended).
+    trace_types : list[int] or None
+        Particle type(s) whose motion traces will be drawn over time.
+        If None, no traces are drawn.
     particle_config : dict or None
-        Particle type configuration (passed to scatter_fct)
-    histogram_config : list or None
-        Histogram configuration: [{'types': [...], 'color': '...', 'label': '...'}, ...]
-    duration : float
-        Video duration in seconds
-    fps : int
-        Frames per second
-    dpi : int
-        Figure DPI
-    ylim : tuple
-        Y-axis limits (min, max)
-    histogram_bins : int
-        Number of histogram bins
-    histogram_range : tuple or None
-        Y-range for histogram filtering (default: use ylim)
-    width_ratios : tuple
-        Width ratio of scatter to histogram (e.g., (3, 1))
-    wspace : float
-        Space between subplots
-    height_scale : float
-        Height of histogram as fraction of scatter height (0-1)
-    t_window : float
-        Half-width of time window for histogram
-    hist_xlim : float
-        X-axis limit for histogram (density)
-    display_time : bool
-        Show time text
-    display_legend : bool
-        Show legend
+        Configuration mapping particle type groups to visualization style:
+        {
+            "filaments": {"types": [...], "color": ..., "marker": ..., "s": ..., ...},
+            "synthase":  {"types": [...], "color": ..., ...}
+        }
+    histogram_config : list[dict] or None
+        Histogram config list [{'types': [...], 'color': '...', 'label': '...'}, ...].
+    with_histogram : bool
+        Whether to draw the histogram side panel.
+    N_show : int
+        Maximum number of traced IDs to show (randomly chosen among trace_types).
+    duration, fps, dpi : numeric
+        Movie length, frame rate, and figure DPI.
+    xlim, ylim : tuple (min, max)
+        Axes limits in nm.
+    histogram_bins, histogram_range, width_ratios, wspace, height_scale, hist_xlim : misc histogram parameters.
+    display_time, display_legend : bool
+        Whether to show a time stamp and legend.
+    figsize : tuple
+        Figure size (width, height) in inches.
+    inactive_color, inactive_alpha : style
+        Color and alpha for particles not currently of a traced type.
     """
+    import numpy as np
+    import pandas as pd
+    import matplotlib.pyplot as plt
+    import matplotlib.gridspec as gridspec
     from moviepy.editor import VideoClip
     from moviepy.video.io.bindings import mplfig_to_npimage
-    if histogram_range is None:
-        histogram_range = ylim
-    
-    # Default configs
+
+    # ---------------- Default configs ----------------
     if particle_config is None:
+        print("using default particle settings dict")
         particle_config = {
-            'filaments': {
-                'types': [1, 2, 3],
-                'color': '#4cc9f0',
-                'marker': 'o',
-                's': 10,
-                'label': 'FtsZ',
-                'plot': True,
+            "filaments": {
+                "types": [1, 2, 3],
+                "color": "#4cc9f0",
+                "marker": "o",
+                "s": 10,
+                "zorder": 1,
+                "alpha": 1.0,
+                "label": "FtsZ",
             },
-            'synthase': {
-                'types': [5, 6],
-                'color': '#f72585',
-                'marker': 's',
-                's': 20,
-                'label': 'Synthase',
-                'plot': True,
+            "synthase": {
+                "types": [5, 6, 11],
+                "color": "#f72585",
+                "marker": "s",
+                "s": 20,
+                "zorder": 2,
+                "alpha": 1.0,
+                "label": "Synthase",
+                "trace_color": "#397387ff",
+                "trace_alpha": 0.7,
+                "trace_zorder": 1.5,
             },
         }
-    
+
     if histogram_config is None:
         histogram_config = [
-            {'types': [5, 6], 'color': '#f72585', 'label': 'Synthase'},
-            {'types': [1, 2, 3], 'color': '#4cc9f0', 'label': 'FtsZ'},
+            {"types": [5, 6, 11], "color": "#f72585", "label": "Synthase"},
+            {"types": [1, 2, 3], "color": "#4cc9f0", "label": "FtsZ"},
         ]
-    
+
     plt.rcParams["figure.dpi"] = dpi
+    if histogram_range is None:
+        histogram_range = ylim
+
     T_tot = df["time"].values[-1]
-    scale_xy = 5
-    
-    # --- Figure layout with gridspec ---
-    fig = plt.figure(figsize=figsize, constrained_layout=False)
-    gs = gridspec.GridSpec(1, 2, width_ratios=width_ratios, wspace=wspace, figure=fig)
-    ax_scatter = fig.add_subplot(gs[0, 0])
-    ax_hist = fig.add_subplot(gs[0, 1], sharey=ax_scatter)
+    SCALE = 5.0
+
+    # Pick IDs to trace if trace_types requested
+    if trace_types:
+        subset = df[df["type"].isin(trace_types)]
+        unique_ids = subset["id"].unique()
+        if len(unique_ids) > N_show:
+            rng = np.random.default_rng(42)
+            show_ids = rng.choice(unique_ids, size=N_show, replace=False)
+        else:
+            show_ids = unique_ids
+        print(f"Selected {len(show_ids)} IDs for tracing: {show_ids}")
+        df_trace = df[df["id"].isin(show_ids)]
+    else:
+        show_ids = []
+        df_trace = pd.DataFrame(columns=df.columns)
+
+    # Build quick type→style lookup
+    base_color_map, trace_color_map = {}, {}
+    marker_map, size_map, zorder_map = {}, {}, {}
+    label_map, alpha_map = {}, {}
+    lw_map, trace_alpha_map, trace_zorder_map = {}, {}, {}
+    for name, cfg in particle_config.items():
+        for ttp in cfg.get("types", []):
+            base_color_map[ttp] = cfg.get("color", "#397387ff")
+            trace_color_map[ttp] = cfg.get("trace_color", base_color_map[ttp])
+            marker_map[ttp] = cfg.get("marker", "o")
+            size_map[ttp] = cfg.get("s", 10)
+            zorder_map[ttp] = cfg.get("zorder", 1)
+            alpha_map[ttp] = cfg.get("alpha", 1.0)
+            label_map[ttp] = cfg.get("label", str(ttp))
+            lw_map[ttp] = cfg.get("lw", 2.5)
+            trace_alpha_map[ttp] = cfg.get("trace_alpha", 1.0)
+            trace_zorder_map[ttp] = cfg.get("trace_zorder", zorder_map[ttp] - 0.5)
+
+    # --- Figure layout ---
+    if with_histogram:
+        fig = plt.figure(figsize=figsize)
+        gs = gridspec.GridSpec(1, 2, width_ratios=width_ratios, wspace=wspace)
+        ax_scatter = fig.add_subplot(gs[0, 0])
+        ax_hist = fig.add_subplot(gs[0, 1], sharey=ax_scatter)
+    else:
+        fig, ax_scatter = plt.subplots(figsize=figsize)
+        ax_hist = None
+
+    ax_scatter.set_xlim(xlim)
+    ax_scatter.set_ylim(ylim)
+    ax_scatter.set_xlabel("Cell circumference (nm)")
+    ax_scatter.set_ylabel("Long cell axis (nm)")
 
     def clear_ax_artists(ax):
-        """Remove all plotted graphics (scatter, lines, quivers, arrows, etc.) but keep axes labels & limits."""
         for coll in list(ax.collections):
             coll.remove()
         for ln in list(ax.lines):
             ln.remove()
-        for p in list(ax.patches):   # FancyArrows / rectangles / etc.
+        for p in list(ax.patches):
             p.remove()
         for txt in list(ax.texts):
-            if "t =" in txt.get_text():
-                # optional: keep time text or not
-                txt.remove()
-            else:
-                txt.remove()
-    
+            txt.remove()
+
+    # --- Animation frame generator ---
     def make_frame(t_video):
-        # Map video time to data time
-        t_data = int(T_tot * t_video / duration)
-        
-        # Find nearest time in data
+        t_data = T_tot * t_video / duration
         closest_time = df["time"].values[np.abs(df["time"].values - t_data).argmin()]
-        
-        # Clear axes
-        # ax_scatter.clear()
-        # Instead of ax.clear(), wipe artists manually:
-        # for c in ax_scatter.collections: c.remove()
-        # for l in ax_scatter.lines: l.remove()
-        # for t in ax_scatter.texts: t.remove()
-        # ax_hist.clear()
         clear_ax_artists(ax_scatter)
-        clear_ax_artists(ax_hist)
-        
-        # Plot scatter with histograms
-        scatter_fct(
-            df,
-            ax_scatter,
-            closest_time,
-            particle_config=particle_config,
-            display_time=display_time,
-            display_legend=display_legend,
-            scale_xy=scale_xy,
-            ylim=ylim,
-            show_quantiles=False,
-            hideticklabels=False,
-            histogram_axis=ax_hist,
-            histogram_config=histogram_config,
-            histogram_bins=histogram_bins,
-            histogram_range=histogram_range,
-            xlim=xlim,
-        )
-        
-        # Customize histogram axis
-        ax_hist.set_xlim(0, hist_xlim)
-        ax_hist.set_xticklabels([])
-        ax_hist.set_yticks([])
-        ax_hist.set_xlabel("Density")
-        ax_hist.set_aspect('auto')
-        
-        # Customize scatter axis
-        ax_scatter.set_xlabel("Cell circumference (nm)")
-        ax_scatter.set_ylabel("Long cell axis (nm)")
-        
-        # Update time text if enabled
+        if with_histogram and ax_hist is not None:
+            clear_ax_artists(ax_hist)
+
+        # Subset of this time
+        frame_df = df[df["time"] == closest_time]
+
+        # Only display types defined and marked "plot": True in particle_config
+        visible_types = [
+            ttp
+            for cfg in particle_config.values()
+            for ttp in cfg.get("types", [])
+            if cfg.get("plot", True)
+        ]
+
+        for ttype in sorted([t for t in frame_df["type"].unique() if t in visible_types]):
+            sub = frame_df[frame_df["type"] == ttype]
+            if sub.empty:
+                continue
+            # If using trace_types, mark "inactive" color for traced IDs of non-active types
+            is_traced_type = ttype in trace_types if trace_types else False
+            ax_scatter.scatter(
+                SCALE * sub["x"], SCALE * sub["y"],
+                c=base_color_map.get(ttype, "#397387ff"),
+                s=size_map.get(ttype, 10),
+                marker=marker_map.get(ttype, "o"),
+                zorder=zorder_map.get(ttype, 1),
+                alpha=alpha_map.get(ttype, 1.0),
+                edgecolors="none",
+                label=label_map.get(ttype, str(ttype))
+            )
+
+        # ---- Draw traces if requested ----
+        if trace_types and len(show_ids) > 0:
+            MAX_DIST = 25.0
+            for pid in show_ids:
+                pdata = df_trace[
+                    (df_trace["id"] == pid)
+                    & (df_trace["time"] <= closest_time)
+                    & (df_trace["type"].isin(trace_types))
+                ]
+                if pdata.empty:
+                    continue
+                pdata = pdata.sort_values("time")
+                px = SCALE * pdata["x"].values
+                py = SCALE * pdata["y"].values
+                diffs = np.sqrt(np.diff(px)**2 + np.diff(py)**2)
+                break_idx = np.where(diffs > MAX_DIST)[0]
+                segs, start = [], 0
+                for b in break_idx:
+                    segs.append(slice(start, b + 1))
+                    start = b + 1
+                segs.append(slice(start, len(px)))
+
+                ptype = pdata["type"].iloc[0]
+                color = trace_color_map.get(ptype, "#397387ff")
+                lw = lw_map.get(ptype, 2.5)
+                talpha = trace_alpha_map.get(ptype, 1.0)
+                tz = trace_zorder_map.get(ptype, 1.5)
+                for seg in segs:
+                    if seg.stop - seg.start < 2:
+                        continue
+                    ax_scatter.plot(px[seg], py[seg],
+                                    lw=lw, color=color,
+                                    alpha=talpha, zorder=tz)
+
+        # ---- Optional histogram side plot ----
+        if with_histogram and ax_hist is not None:
+            scatter_fct(
+                df,
+                ax_scatter,
+                closest_time,
+                particle_config=particle_config,
+                display_time=False,
+                display_legend=False,
+                scale_xy=SCALE,
+                ylim=ylim,
+                histogram_axis=ax_hist,
+                histogram_config=histogram_config,
+                histogram_bins=histogram_bins,
+                histogram_range=histogram_range,
+                xlim=xlim,
+            )
+            ax_hist.set_xlim(0, hist_xlim)
+            ax_hist.set_xticklabels([])
+            ax_hist.set_yticks([])
+            ax_hist.set_xlabel("Density")
+            ax_hist.set_aspect('auto')
+
+        # ---- Time text & legend ----
         if display_time:
-            # Time text already added by scatter_fct, but we can override
-            for text in ax_scatter.texts:
-                if "t =" in text.get_text():
-                    text.remove()
-            ax_scatter.text(0.8, 0.9, f"t = {closest_time:.0f} s",
-                          transform=ax_scatter.transAxes,
-                          ha="center", va="center",
-                          bbox=dict(facecolor="white", alpha=0.8, edgecolor="white"))
-        
+            ax_scatter.text(
+                0.8, 0.9, f"t = {closest_time:.0f} s",
+                transform=ax_scatter.transAxes,
+                ha="center", va="center",
+                bbox=dict(facecolor="white", alpha=0.8, edgecolor="white"),
+            )
+        if display_legend:
+            handles, labels = ax_scatter.get_legend_handles_labels()
+            by_label = dict(zip(labels, handles))
+            ax_scatter.legend(by_label.values(), by_label.keys(), frameon=False,
+            loc="upper left")
+
         fig.canvas.draw_idle()
         return mplfig_to_npimage(fig)
-    
-    # Create and write video
+
+    # --- Render video ---
     animation = VideoClip(make_frame, duration=duration)
     animation.write_videofile(f"{tag}.mp4", fps=fps, codec="libx264", audio=False)
-
-
-
 
 
 # tested in /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/0__ring/M__cmplx_cnstrct_intermediate/A_staticring/B__arrest/notebooks/processive_traces_movie.ipynb
