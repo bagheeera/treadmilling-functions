@@ -356,6 +356,7 @@ def diam_plot(
     vline_pos=None,
     verbose=False,
     plot_coltharp=True,
+    legendloc="upper right",
 ):
     """
     Plot diameter (default) or radius evolution over time, with optional inset,
@@ -478,7 +479,7 @@ def diam_plot(
     if axislabels:
         ax.set_xlabel("Time (min)")
         ax.set_ylabel(ylabel)
-        ax.legend(loc="upper right", fontsize=8, title=legendtitle, ncol=ncol)
+        ax.legend(loc=legendloc, fontsize=8, title=legendtitle, ncol=ncol)
 
     # ---------------------------
     # Optional inset
