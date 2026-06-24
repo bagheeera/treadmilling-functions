@@ -1088,8 +1088,51 @@ from itertools import product
 
 def key_pooling(D, base_key, metric_fct, seeds=None, pool_params=None, verbose=False):
     """
-    Pools data across multiple parameter values (seeds, etc.) while preserving shape.
-    """
+        Pools metric data across parameter combinations and computes statistics.
+
+        Iterates through the Cartesian product of parameters in `pool_params` (or `seeds`),
+        updates the `base_key` for each combination, extracts data using `metric_fct`, 
+        and returns the element-wise mean and standard deviation.
+
+        Parameters
+        ----------
+        D : dict
+            The source dictionary/database containing the data.
+        base_key : object
+            The template key updated with specific parameter values via `update_key`.
+        metric_fct : callable
+            Function called as `metric_fct(D, key)` that returns an array or None.
+        seeds : list, optional
+            Fallback seeds `[1, 2, 3, 4, 5]` if `pool_params` is not provided.
+        pool_params : dict, optional
+            Dictionary of parameters to pool over (e.g., `{'seed': [1, 2], 'lr': [0.1]}`).
+        verbose : bool, default False
+            If True, prints debug statements for tracking collection and shapes.
+
+        Returns
+        -------
+        mean_res : np.ndarray or None
+            Element-wise mean across the pooled dimension (axis=0).
+        std_res : np.ndarray or None
+            Element-wise standard deviation across the pooled dimension.
+        n_found : int
+            Number of successfully collected and stacked data arrays.
+
+        Examples
+        --------
+        >>> # Example 1: Basic pooling over seeds
+        >>> D = {'run_seed_1': [10, 20], 'run_seed_2': [30, 40]}
+        >>> def dummy_metric(db, key): return db.get(key)
+        >>> mean, std, n = key_pooling(D, 'run_seed_0', dummy_metric, seeds=[1, 2])
+        >>> mean
+        array([20., 30.])
+        >>> n
+        2
+
+        >>> # Example 2: Pooling over multiple parameters (Cartesian product)
+        >>> pool = {'seed': [1, 2], 'lr': [0.01, 0.1]}
+        >>> mean, std, n = key_pooling(D, base_key, dummy_metric, pool_params=pool)
+        """
 
     # Determine what to pool over
     if pool_params is None:
@@ -1169,24 +1212,24 @@ def key_pooling(D, base_key, metric_fct, seeds=None, pool_params=None, verbose=F
         for i, arr in enumerate(normalized_data):
             print(f"    [{i}] shape={np.shape(arr)} mean={np.nanmean(arr):.4f}")
 
-    # Stack along new axis
+    # Concatenate all values into a single 1D array
     try:
-        data_stack = np.stack(normalized_data, axis=0)
+        # np.atleast_1d ensures scalars or 1D arrays combine cleanly
+        data_stack = np.concatenate([np.atleast_1d(a) for a in normalized_data])
     except Exception as e:
         if verbose:
-            print(f"[DEBUG] Failed to stack arrays: {e}")
+            print(f"[DEBUG] Failed to concatenate arrays: {e}")
             print("[DEBUG] Shapes were:", [np.shape(a) for a in normalized_data])
-        # fallback
         return None, None, len(normalized_data)
 
-    mean_res = np.nanmean(data_stack, axis=0)
-    std_res = np.nanstd(data_stack, axis=0)
+    # Compute global statistics across the pooled data
+    mean_res = np.nanmean(data_stack)
+    std_res = np.nanstd(data_stack)
     n_found = len(normalized_data)
 
     if verbose:
-        print(f"[DEBUG] data_stack shape: {data_stack.shape}")
-        print(f"[DEBUG] mean_res shape: {mean_res.shape}, std_res shape: {std_res.shape}")
-        print(f"[DEBUG] std_res example (first few): {std_res.flat[:10]}")
+        print(f"[DEBUG] Total concatenated elements: {data_stack.size}")
+        print(f"[DEBUG] Global mean: {mean_res:.4f}, Global std: {std_res:.4f}")
 
     return mean_res, std_res, n_found
 

@@ -217,6 +217,7 @@ plot_sim_exp_comparison(
     # Panel 0: monomer lifetimes
     # =========================
     ax[0].set_title("Monomer lifetimes", pad=titlepad)
+    print("nr of lifetimes used", len(D[key]["monomer_lifetimes"]))
     lifetimes_plot(key, ax[0], D, show_means=False, expcolor="C1")
     ax[0].set_ylabel("Probability")
 
