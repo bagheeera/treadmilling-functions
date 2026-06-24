@@ -509,11 +509,7 @@ def make_arrow_orientation_bidirectional(
 
 
 
-import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
-import numpy as np
-from moviepy.editor import VideoClip
-from moviepy.video.io.bindings import mplfig_to_npimage
+
 
 # from fct.cmplx_scatter import scatter_fct
 def render_movie_with_hist(
