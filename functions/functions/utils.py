@@ -1088,53 +1088,38 @@ from itertools import product
 
 def key_pooling(D, base_key, metric_fct, seeds=None, pool_params=None, verbose=False):
     """
-        Pools metric data across parameter combinations and computes statistics.
+    Pools metric data across parameter combinations and computes element-wise statistics.
 
-        Iterates through the Cartesian product of parameters in `pool_params` (or `seeds`),
-        updates the `base_key` for each combination, extracts data using `metric_fct`, 
-        and returns the element-wise mean and standard deviation.
+    Iterates through the Cartesian product of parameters in `pool_params` (or `seeds`),
+    updates the `base_key` for each combination, extracts data with `metric_fct`, and
+    returns the element-wise mean and standard deviation (axis=0).
 
-        Parameters
-        ----------
-        D : dict
-            The source dictionary/database containing the data.
-        base_key : object
-            The template key updated with specific parameter values via `update_key`.
-        metric_fct : callable
-            Function called as `metric_fct(D, key)` that returns an array or None.
-        seeds : list, optional
-            Fallback seeds `[1, 2, 3, 4, 5]` if `pool_params` is not provided.
-        pool_params : dict, optional
-            Dictionary of parameters to pool over (e.g., `{'seed': [1, 2], 'lr': [0.1]}`).
-        verbose : bool, default False
-            If True, prints debug statements for tracking collection and shapes.
+    Parameters
+    ----------
+    D : dict
+        Source dictionary or database containing the data.
+    base_key : object
+        Template key updated with parameter values via `update_key`.
+    metric_fct : callable
+        Function called as `metric_fct(D, key)` that returns an array-like or None.
+    seeds : list, optional
+        Default seeds `[1, 2, 3, 4, 5]` if `pool_params` is not provided.
+    pool_params : dict, optional
+        Dict of parameters to pool over (e.g., {'seed': [1,2], 'lr':[0.01,0.1]}).
+    verbose : bool, default False
+        If True, prints debug information.
 
-        Returns
-        -------
-        mean_res : np.ndarray or None
-            Element-wise mean across the pooled dimension (axis=0).
-        std_res : np.ndarray or None
-            Element-wise standard deviation across the pooled dimension.
-        n_found : int
-            Number of successfully collected and stacked data arrays.
-
-        Examples
-        --------
-        >>> # Example 1: Basic pooling over seeds
-        >>> D = {'run_seed_1': [10, 20], 'run_seed_2': [30, 40]}
-        >>> def dummy_metric(db, key): return db.get(key)
-        >>> mean, std, n = key_pooling(D, 'run_seed_0', dummy_metric, seeds=[1, 2])
-        >>> mean
-        array([20., 30.])
-        >>> n
-        2
-
-        >>> # Example 2: Pooling over multiple parameters (Cartesian product)
-        >>> pool = {'seed': [1, 2], 'lr': [0.01, 0.1]}
-        >>> mean, std, n = key_pooling(D, base_key, dummy_metric, pool_params=pool)
-        """
-
-    # Determine what to pool over
+    Returns
+    -------
+    mean_res : np.ndarray or None
+        Element-wise mean across pooled data.
+    std_res : np.ndarray or None
+        Element-wise standard deviation.
+    n_found : int
+        Number of successfully collected arrays.
+    """
+    
+    # Decide what to pool over
     if pool_params is None:
         if seeds is None:
             seeds = [1, 2, 3, 4, 5]
@@ -1142,7 +1127,7 @@ def key_pooling(D, base_key, metric_fct, seeds=None, pool_params=None, verbose=F
 
     collected_data = []
 
-    # Generate all combinations of pool parameters
+    # Generate combinations of parameters
     items = sorted(pool_params.items())
     param_names = [it[0] for it in items]
     param_values = [it[1] for it in items]
@@ -1160,7 +1145,7 @@ def key_pooling(D, base_key, metric_fct, seeds=None, pool_params=None, verbose=F
         try:
             s_key = update_key(base_key, **update_dict)
         except Exception as e:
-            # fallback attempt
+            # Fallback for dict-type keys
             if isinstance(base_key, dict):
                 s_key = base_key.copy()
                 for pname, pval in update_dict.items():
@@ -1177,11 +1162,9 @@ def key_pooling(D, base_key, metric_fct, seeds=None, pool_params=None, verbose=F
                     collected_data.append(val)
                     n_success += 1
                     if verbose:
-                        print(f"[DEBUG] Collected for {update_dict}: {np.shape(val)}")
-                        print(f"[DEBUG] Example value (first few): {np.array(val)[:5] if np.ndim(val) else val}")
-                else:
-                    if verbose:
-                        print(f"[DEBUG] Got None for {s_key}")
+                        print(f"[DEBUG] Collected for {update_dict}: shape={np.shape(val)}")
+                elif verbose:
+                    print(f"[DEBUG] Got None for {s_key}")
             except Exception as e:
                 if verbose:
                     print(f"[DEBUG] Metric computation failed for {s_key}: {e}")
@@ -1190,49 +1173,40 @@ def key_pooling(D, base_key, metric_fct, seeds=None, pool_params=None, verbose=F
                 print(f"[DEBUG] Key not found in D: {s_key}")
 
     if verbose:
-        print(f"[DEBUG] Finished looping.")
-        print(f"[DEBUG] Attempted: {n_attempts}, Collected: {n_success}")
+        print(f"[DEBUG] Finished looping. Attempted={n_attempts}, Collected={n_success}")
 
     if not collected_data:
         if verbose:
             print("[DEBUG] No data collected.")
         return None, None, 0
 
-    # Normalize all values to arrays (preserving their original shape)
-    normalized_data = [_normalize_value(v) for v in collected_data]
-    normalized_data = [v for v in normalized_data if v is not None]
-
-    if not normalized_data:
+    # Normalize to 1‑D numeric arrays
+    normalized = [np.atleast_1d(np.asarray(v, float)) for v in collected_data if v is not None]
+    if not normalized:
         if verbose:
             print("[DEBUG] No normalized data.")
         return None, None, 0
 
-    if verbose:
-        print(f"[DEBUG] Collected {len(normalized_data)} arrays total")
-        for i, arr in enumerate(normalized_data):
-            print(f"    [{i}] shape={np.shape(arr)} mean={np.nanmean(arr):.4f}")
+    # Handle unequal lengths by NaN-padding to the max length
+    max_len = max(len(a) for a in normalized)
+    padded_arrays = []
+    for a in normalized:
+        if len(a) < max_len:
+            a = np.pad(a, (0, max_len - len(a)), constant_values=np.nan)
+        padded_arrays.append(a)
 
-    # Concatenate all values into a single 1D array
-    try:
-        # np.atleast_1d ensures scalars or 1D arrays combine cleanly
-        data_stack = np.concatenate([np.atleast_1d(a) for a in normalized_data])
-    except Exception as e:
-        if verbose:
-            print(f"[DEBUG] Failed to concatenate arrays: {e}")
-            print("[DEBUG] Shapes were:", [np.shape(a) for a in normalized_data])
-        return None, None, len(normalized_data)
+    data_stack = np.vstack(padded_arrays)  # shape = (n_arrays, max_len)
 
-    # Compute global statistics across the pooled data
-    mean_res = np.nanmean(data_stack)
-    std_res = np.nanstd(data_stack)
-    n_found = len(normalized_data)
+    mean_res = np.nanmean(data_stack, axis=0)
+    std_res = np.nanstd(data_stack, axis=0)
+    n_found = len(normalized)
 
     if verbose:
-        print(f"[DEBUG] Total concatenated elements: {data_stack.size}")
-        print(f"[DEBUG] Global mean: {mean_res:.4f}, Global std: {std_res:.4f}")
+        print(f"[DEBUG] Stacked shape: {data_stack.shape}")
+        print(f"[DEBUG] Mean (first few): {mean_res[:5]}")
+        print(f"[DEBUG] Std  (first few): {std_res[:5]}")
 
     return mean_res, std_res, n_found
-
 
 def collect_trend_from_base(
     D, 
