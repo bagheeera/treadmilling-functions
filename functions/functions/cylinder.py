@@ -366,13 +366,13 @@ def diam_plot(
     # ---------------------------
     # Extract data
     # ---------------------------
-    t, r = np.array(D[key]["t_r"]).T  # time (ms?), radius (nm)
+    t, r = np.array(D[key]["t_r"]).T  # time (ms?), sPG tracker says radius is saved in su, so we convert to nm
     if display_radius:
-        val_md = r
+        val_md = r * 5
         val_name = "Radius"
         val_0 = D_0 / 2
     else:
-        val_md = r * 2
+        val_md = r * 2 * 5
         val_name = "Diameter"
         val_0 = D_0
 
