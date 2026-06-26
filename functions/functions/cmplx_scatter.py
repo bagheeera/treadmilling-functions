@@ -2,14 +2,70 @@ from matplotlib.lines import Line2D
 import numpy as np
 
 
-from matplotlib.lines import Line2D
-import numpy as np
-import pandas as pd
+def plot_nr_processive(
+    D, key, ax,
+    overlay=None,
+    complex_types=None,
+    label_map=None,
+    df=None
+):
+    """
+    Plot the number of processive complexes vs. time for one or more types.
 
+    Parameters
+    ----------
+    D : dict
+        Experiment data dictionary (with rundir paths).
+    key : str
+        Key selecting which run to plot.
+    ax : matplotlib.axes.Axes
+        Axis on which to plot.
+    overlay : str, optional
+        Overlay label (e.g., parameter value shown by plot_data_).
+    complex_types : list[int], optional
+        Complex type codes to plot. Defaults to [11].
+    label_map : dict[int, str], optional
+        Mapping from complex type code -> readable label.
+        Example: {10:"inact", 11:"proc", 8:"act", 13:"cooldwn", 15:"primed"}
+    df : pd.DataFrame, optional
+        Pre‑loaded dataframe for efficiency.
+    """
+    from functions import utils
+    import pandas as pd
 
-from matplotlib.lines import Line2D
-import numpy as np
-import pandas as pd
+    # Default to a single type if none provided
+    if complex_types is None:
+        complex_types = [11]
+
+    # Default label map (can be overridden)
+    if label_map is None:
+        label_map = {
+            10: "inact",
+            11: "proc",
+            8:  "act",
+            13: "cooldwn",
+            15: "primed",
+        }
+
+    # Load data only once if not passed
+    if df is None:
+        df = utils.load(D[key]["rundir"])
+
+    # Loop through complex types and plot
+    for ctype in complex_types:
+        counts = df[df["type"] == ctype].groupby("time").size()
+
+        # Construct plot label
+        base_label = label_map.get(ctype, str(ctype))
+        if overlay:
+            label = f"{base_label} ({overlay})"
+        else:
+            label = base_label
+
+        ax.plot(counts.index, counts.values, label=label)
+
+    ax.legend()
+    return df
 
 
 def scatter_fct(

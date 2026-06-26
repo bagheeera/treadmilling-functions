@@ -136,7 +136,7 @@ def plot_data_(prm_sets, D, grid_params, overlay_params, plot_function, check_ke
                         plot_function(key_tuple, subplot_ax, overlay)
                         fig_empty = False # at least one plot was drawn
                     else:
-                        subplot_ax.axis("off")
+                        continue #subplot_ax.axis("off")
                 if renamedict:
                     column_label = renamedict.get(grid_params[0], grid_params[0])
                     row_label = renamedict.get(grid_params[1], grid_params[1])
