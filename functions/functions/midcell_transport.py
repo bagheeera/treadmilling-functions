@@ -937,14 +937,44 @@ crop=(300, -100, 500, -500)):
     else:
         print("missing", fname)
 
-def plot_nr_active(D, key, ax, overlay):
+def plot_nr_active(D, key, ax, overlay, synth_type=11):
     if "nr_active" not in D[key]:
         df = feather.read_feather(D[key]["rundir"] + "/df_synth.feather")
+        df = df[df["type"]==synth_type]
         D[key]["nr_active"] = df.groupby("time").size()
         nr_active = D[key]["nr_active"]
     else:
         nr_active = D[key]["nr_active"]
     return ax.plot(nr_active, label=overlay)
+
+def pooled_nr_active(D, prm, key, ax, overlay, mdcolor=None, lw=1.9, synth_type=11):
+
+    for s in prm["seed"]:
+        skey = fct.update_key(key, **{"seed": s})
+        if "nr_active" not in D[skey]:
+            df = feather.read_feather(D[skey]["rundir"] + "/df_synth.feather")
+            df = df[df["type"]==synth_type]
+            D[skey]["nr_active"] = df.groupby("time").size()
+
+    mean_nr, std_nr, nseeds = fct.utils.key_pooling(
+        D, key,
+        lambda D, key: D[key]["nr_active"].values,
+        seeds=prm["seed"],
+        verbose=False,
+    )
+
+    # use the longest times index (matches key_pooling's stacked shape)
+    times = max(
+        (D[fct.update_key(key, **{"seed": s})]["nr_active"].index for s in prm["seed"]),
+        key=len
+    )
+
+    line, = ax.plot(times/60, mean_nr, label=overlay, color=mdcolor, lw=lw)
+    ax.fill_between(times/60,
+                    mean_nr - std_nr,
+                    mean_nr + std_nr,
+                    color=line.get_color(), alpha=0.3, linewidth=0)
+    return ax, times, mean_nr
 
 import os
 import pandas as pd

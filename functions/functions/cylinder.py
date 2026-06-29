@@ -429,7 +429,11 @@ def diam_plot(
 
         if std_data is not None:
             if std_data.ndim == 2 and std_data.shape[1] == 2:
-                std_data = std_data[:, 1] * 2
+                r_std = std_data[:, 1]
+                if display_radius:
+                    std_data = r_std * 5.0          # radius in nm
+                else:
+                    std_data = r_std * 2 * 5.0      # diameter in nm
             std_data = np.asarray(std_data).flatten()
             if len(std_data) == len(val_md_plot):
                 if normalize_diameter:
@@ -503,11 +507,31 @@ def diam_plot(
     return ax
 
 
-def pooled_diam_plot(D, prm, key, ax, overlay, vline_pos=None):
-    # Load time–radius data
-    D[key]["t_r"] = pd.read_pickle(D[key]["rundir"] + "/t_r.pkl")
+def pooled_diam_plot(D, prm, key, ax, overlay, vline_pos=None, mdcolor=None, normalize_diameter=False, display_radius=True,
+                     coltharp_label=None, lw=1.9, t_model_max=44, plot_coltharp=True):
+    """
+    Plot pooled diameter data.
 
-    # --- Pool seeds --------------------------------------------------------
+    Parameters
+    ----------
+    D : dict
+        Main data structure.
+    prm : dict
+        Parameter dictionary.
+    key : str
+        Dataset key.
+    ax : matplotlib.axes.Axes
+        Axis on which to plot.
+    overlay : bool
+        Whether to overlay on existing plot.
+    vline_pos : float or None
+        Position for optional vertical line.
+        """
+
+    # --- Load time–radius data ----------------------------------------
+    if "t_r" not in D[key]:
+        D[key]["t_r"] = pd.read_pickle(D[key]["rundir"] + "/t_r.pkl")
+
     mean_r, std_r, nseeds = fct.utils.key_pooling(
         D, key,
         lambda D, key: [v[1] for v in D[key]["t_r"]],
@@ -515,28 +539,46 @@ def pooled_diam_plot(D, prm, key, ax, overlay, vline_pos=None):
         verbose=False,
     )
 
-    # --- Assemble pooled data structures -----------------------------------
+    # Create pooled data
+    times = np.array([v[0] for v in D[key]["t_r"]])
     D["pooled"] = {}
-    try:
-        D["pooled"]["t_r"] = [[t, r] for t, r in zip(
-            [v[0] for v in D[key]["t_r"]], mean_r)]
-        D["pooled"]["t_r_std"] = [[t, s] for t, s in zip(
-            [v[0] for v in D[key]["t_r"]], std_r)]
-    except Exception as e:
-        print(f"Error assembling pooled data: {e}")
-        print("Falling back to unpooled data for plotting.")
-        D["pooled"]["t_r"] = D[key]["t_r"]
+    D["pooled"]["t_r"] = np.column_stack((times, mean_r))
+    D["pooled"]["t_r_std"] = np.column_stack((times, std_r))
 
-    # --- Plot using your existing diameter plotter -------------------------
-    arrt_value = dict(key)["arrt"]
+    # --- BACK-FILL / PREPEND SECTION ---
+    # how far you want to go back (same spacing as in your data)
+    dt = times[1] - times[0] if len(times) > 1 else 0
+    t_first = times[0]
+    # for example, extend back by 1 or 2 steps
+    prepend_times = np.arange(0, t_first, dt)  # adjust as needed
+    first_value = mean_r[0]
+    first_std = std_r[0]
+
+    prepend_block = np.column_stack((
+        prepend_times,
+        np.full_like(prepend_times, first_value, dtype=float)
+    ))
+    prepend_std_block = np.column_stack((
+        prepend_times,
+        np.full_like(prepend_times, first_std, dtype=float)
+    ))
+
+    # combine earlier + existing data
+    D["pooled"]["t_r"] = np.vstack((prepend_block, D["pooled"]["t_r"]))
+    D["pooled"]["t_r_std"] = np.vstack((prepend_std_block, D["pooled"]["t_r_std"]))
 
     fct.cylinder.diam_plot(
-        D,
-        "pooled",
-        ax,
-        overlay=overlay, axislabels=None,
+        D, "pooled", ax,
+        mdlabel=overlay,
+        mdcolor=mdcolor,
+        normalize_diameter=normalize_diameter,
+        display_radius=display_radius,
         plot_std=True,
-        vline_pos=vline_pos
+        lw=lw,
+        t_model_max=t_model_max,
+        plot_coltharp=plot_coltharp,
+        coltharp_label=coltharp_label,
+        axislabels=None,
     )
 
 
