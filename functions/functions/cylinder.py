@@ -1035,3 +1035,89 @@ def map_to_cylinder(df, fulldf=None, radial_offset=None, NM_PER_SU=1.0):
         ignore_index=True
     )
     return mapped
+
+
+
+
+def plot_H_blurred_profile(D, key, ax,
+                           color="#6c8895ff",
+                           label=None,
+                           z_slice_range=(180, 290),
+                           z_range_tuple=(-3*70, 3*70),
+                           blur_nm=(25, 4),
+                           df_filter_type=[11],
+                           alpha_fill=0.25,
+                           lw=2):
+    """
+    Plot the mean ± std of H_blurred profile along the z-axis.
+
+    Parameters
+    ----------
+    D : dict
+        Simulation dictionary containing rundir and potentially H_blurred entries.
+    key : hashable
+        Key of the simulation configuration to plot.
+    ax : matplotlib.axes.Axes
+        Axis on which to draw.
+    color : str
+        Line color (hex or named color).
+    label : str
+        Legend label for the plot.
+    z_slice_range : tuple
+        Slice range (start, stop) used to index H_blurred.T.
+    z_range_tuple : tuple
+        Tuple defining z range (in simulation units) used in histogram mesh.
+    blur_nm : tuple
+        Blur in nanometers applied during histogram mesh.
+    df_filter_type : list
+        Particle types to select when building the histogram mesh.
+    alpha_fill : float
+        Alpha for the filled area representing the std.
+    lw : float
+        Linewidth.
+
+    Returns
+    -------
+    None
+    """
+    import functions as fct
+    import numpy as np
+    import matplotlib.pyplot as plt
+    import functions.sPG_tracker as pgt
+    # Load H_blurred if not yet computed
+    if "H_blurred" not in D[key]:
+        df = fct.utils.load(D[key]["rundir"])
+        _, _, _, H_blurred, *_ = fct.cylinder.histogram_mesh(
+            df[df["type"].isin(df_filter_type)],
+            df,
+            D[key]["rundir"],
+            z_range_tuple=z_range_tuple,
+            blur_nm=blur_nm,
+        )
+        D[key]["H_blurred"] = H_blurred
+
+    # Extract and slice
+    H = D[key]["H_blurred"].T[slice(*z_slice_range), :]  # shape: (n_z_slice, n_theta)
+
+    # Compute z-centers in nanometers
+    strand_width_nm = pgt.strand_thickness_width
+    NM_PER_SU       = 5.0
+    strand_width_su = strand_width_nm / NM_PER_SU
+    z_min, z_max    = z_range_tuple
+    z_edges         = np.arange(z_min, z_max + strand_width_su, strand_width_su)
+    z_centers_nm    = (z_edges[:-1] + z_edges[1:]) / 2 * NM_PER_SU
+    z_slice_nm      = z_centers_nm[slice(*z_slice_range)]
+
+    # Mean and standard deviation along the ring direction
+    mean = H.mean(axis=1)
+    std  = H.std(axis=1)
+
+    # Plot
+    ax.plot(z_slice_nm, mean, color=color, lw=lw, label=label)
+    ax.fill_between(z_slice_nm, mean - std, mean + std,
+                    color=color, alpha=alpha_fill)
+
+    # Axis styling (optional)
+    ax.set_aspect("equal")
+    ax.set_xlabel("Long cell axis (nm)")
+    ax.set_ylabel("Septum height (nm)")
