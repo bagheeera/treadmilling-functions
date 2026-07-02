@@ -1126,14 +1126,21 @@ def plot_H_blurred_profile(D, key, ax,
     ax.set_xlabel("Long cell axis (nm)")
     ax.set_ylabel("Septum height (nm)")
 
-def cross_section_plot(D, key, ax, overlay=None):
-
-    z_range_tuple = (-3*70, 3*70)
+def cross_section_plot(D, key, ax, overlay=None, z_range_tuple=None, color=None):    
+    import functions.sPG_tracker as pgt
+    zrt             = z_range_tuple or D[key].get("z_range_tuple", (-3*70, 3*70))
     strand_width_su = pgt.strand_thickness_width / 5.0
-    z_min, z_max = z_range_tuple
-    z_edges  = np.arange(z_min, z_max + strand_width_su, strand_width_su)
-    z_centers = (z_edges[:-1] + z_edges[1:]) / 2
-    z_nm = z_centers * 5.0
+    z_min, z_max    = zrt
+    z_edges         = np.arange(z_min, z_max + strand_width_su, strand_width_su)
+    z_centers       = (z_edges[:-1] + z_edges[1:]) / 2
+    z_nm            = z_centers * 5.0
 
-    ax.plot(z_nm, D[key]["H_total"].mean(axis=0), label=overlay)
+    if len(z_nm) != D[key]["H_total"].shape[1]:
+        print(f"Warning: z_nm {len(z_nm)} != H_total z-dim {D[key]['H_total'].shape[1]}")
+        return
+
+    ax.plot(z_nm, D[key]["H_total"].mean(axis=0) * pgt.strand_height_nm,
+            label=overlay, color=color)
+    ax.set_xlabel("Long cell axis (nm)")
+    ax.set_ylabel("Septum height (nm)")
     ax.legend()
