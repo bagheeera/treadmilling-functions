@@ -357,6 +357,7 @@ def diam_plot(
     verbose=False,
     plot_coltharp=True,
     legendloc="upper right",
+    strandheight=3,
 ):
     """
     Plot diameter (default) or radius evolution over time, with optional inset,
@@ -494,12 +495,15 @@ def diam_plot(
                                      loc="lower left", borderpad=4)
         ax_ins = ax.my_inset
         z_min, z_max = z_range_tuple
-        strand_width_su = getattr(pgt, "strand_thickness_width", 5.0) / 5.0
+        strand_width_su = getattr(pgt, "strand_thickness_width", 4.5) / 5.0
         z_edges = np.arange(z_min, z_max + strand_width_su, strand_width_su)
         z_centers = (z_edges[:-1] + z_edges[1:]) / 2
         z_nm = z_centers * 5.0
-        ax_ins.plot(z_nm, D[key]["H_total"].mean(axis=0), label=overlay)
-        ax_ins.set_xlim(-300, 300)
+        ax_ins.plot(z_nm, 
+                    D[key]["H_total"].mean(axis=0) * strandheight, ## has to be set in nm
+                    label=overlay)
+        #ax_ins.set_xlim(230-60, 230+60)
+        ax_ins.set_xlim(-120,120)
         if axislabels:
             ax_ins.set_xlabel("Long cell axis (nm)", fontsize=7)
             ax_ins.set_ylabel("Septum height (nm)", fontsize=7)
@@ -1121,3 +1125,15 @@ def plot_H_blurred_profile(D, key, ax,
     ax.set_aspect("equal")
     ax.set_xlabel("Long cell axis (nm)")
     ax.set_ylabel("Septum height (nm)")
+
+def cross_section_plot(D, key, ax, overlay=None):
+
+    z_range_tuple = (-3*70, 3*70)
+    strand_width_su = pgt.strand_thickness_width / 5.0
+    z_min, z_max = z_range_tuple
+    z_edges  = np.arange(z_min, z_max + strand_width_su, strand_width_su)
+    z_centers = (z_edges[:-1] + z_edges[1:]) / 2
+    z_nm = z_centers * 5.0
+
+    ax.plot(z_nm, D[key]["H_total"].mean(axis=0), label=overlay)
+    ax.legend()
