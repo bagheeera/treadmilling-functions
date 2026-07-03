@@ -593,6 +593,7 @@ def render_movie_with_hist(
     inactive_color="#f478aaff",
     inactive_alpha=0.9,
     trace_fade_time=None,     # seconds of visible trace)
+    footer=None,
 ):
     """
     Render an animation of particle positions with optional histogram and trajectory tracing.
@@ -725,6 +726,9 @@ def render_movie_with_hist(
     ax_scatter.set_xlabel("Cell circumference (nm)")
     ax_scatter.set_ylabel("Long cell axis (nm)")
 
+    if footer is not None:
+        fig.text(0.01, 0.01, footer, ha='center', fontsize=3, alpha=0.4)
+
     def clear_ax_artists(ax):
         for coll in list(ax.collections):
             coll.remove()
@@ -849,7 +853,7 @@ def render_movie_with_hist(
         if display_legend:
             handles, labels = ax_scatter.get_legend_handles_labels()
             by_label = dict(zip(labels, handles))
-            ax_scatter.legend(by_label.values(), by_label.keys(), frameon=False,
+            ax_scatter.legend(by_label.values(), by_label.keys(), frameon=True,
             loc="upper left")
 
         fig.canvas.draw_idle()
