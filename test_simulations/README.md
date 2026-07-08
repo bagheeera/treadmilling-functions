@@ -1,0 +1,2 @@
+Directory "notebooks" contains a test jupyter notebook to set up simulations, submit them, and run a simple analysis plotting the final frame of each simulation
+Simulations will be carried out in directory "data"
