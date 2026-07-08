@@ -251,3 +251,87 @@ Bonds
     os.makedirs(run_dir, exist_ok=True)
     with open(os.path.join(run_dir, "configuration.txt"), "w") as f:
         f.write(config_content)
+
+
+
+import json
+import subprocess
+from pathlib import Path
+from tqdm import tqdm
+import inspect
+
+
+
+def build_run_dir(params, omit_params=None, prefix="run_", subdir="runfiles"):
+    """Build a run directory name from swept params, skipping omitted keys."""
+    tag = "_".join(
+        f"{k}{format_value(v)}"
+        for k, v in params.items()
+        if omit_params is None or k not in omit_params
+    )
+    return f"{prefix}{tag}/{subdir}/"
+
+def filter_kwargs(func, config, warn=False):
+    """Keep only the keys in `config` that `func` actually accepts."""
+    accepted = set(inspect.signature(func).parameters)
+    dropped = [k for k in config if k not in accepted]
+    if warn and dropped:
+        print(f"[filter_kwargs] dropping unsupported keys for {func.__name__}: {dropped}")
+    return {k: v for k, v in config.items() if k in accepted}
+
+
+def run_sweep(param_keys, combinations, base_config, omit_params=None, dry_run=False):
+    """
+    Generate configuration files for a parameter sweep.
+ 
+    param_keys:   names of the swept parameters
+    combinations: iterable of value-tuples (e.g. itertools.product(*value_lists))
+    base_config:  dict of kwargs for generate_configuration (everything that stays
+                  fixed for a given simulation setup: Lx, n_synthases, yboxsize,
+                  zpos, massdict, min_dist, sidelength, ...). Can safely contain
+                  extra/unrelated keys (e.g. leftovers from a broader base_values
+                  dict, like log_file) — anything generate_configuration doesn't
+                  accept is filtered out automatically.
+    omit_params:  swept param names to exclude from the run_dir name
+    dry_run:      if True, print what would be generated instead of calling
+                  generate_configuration (useful for sanity-checking a sweep)
+    """
+ 
+    gen_func = generate_configuration
+ 
+    for values in tqdm(combinations):
+        params = dict(zip(param_keys, values))
+        run_dir = build_run_dir(params, omit_params)
+        config = filter_kwargs(gen_func, {**base_config, **params, "run_dir": run_dir})
+ 
+        if dry_run:
+            print(run_dir, config)
+            continue
+ 
+        gen_func(**config)
+        # save_run_metadata(run_dir, params, base_config)
+
+
+
+# ---------------------------------------------------------------------------
+# Example usage — this is the only part that changes between simulation setups
+# ---------------------------------------------------------------------------
+if __name__ == "__main__":
+    from itertools import product
+
+    base_values = {"Lx": 20, "n_synthases": 10, "mZ": 1}
+
+    base_config = dict(
+        Lx=base_values["Lx"],
+        n_synthases=base_values["n_synthases"],
+        yboxsize=base_values["Lx"],
+        zpos=0.5,
+        massdict={i: base_values["mZ"] for i in range(15)},
+        min_dist=1.3,
+        sidelength=8,
+    )
+
+    param_keys = ["min_dist", "sidelength"]
+    combinations = list(product([1.0, 1.3, 1.6], [6, 8, 10]))
+
+    run_sweep(param_keys, combinations, base_config, omit_params=None, dry_run=True)
