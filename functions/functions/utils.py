@@ -298,7 +298,9 @@ def submit_restart_runs(rdir, job_name, iteration, analysisonly=False, cores=2, 
                         analysis_script="/nfs/scistore26/saricgrp/fhorvath/0__treadmilling/2__synthase_setup/2__vary_potential_size/filament_analysis.ipynb",
                         env_setup="/nfs/scistore26/saricgrp/fhorvath/miniforge3/etc/profile.d",
                         dontsubmit=False, additional_analysis=None, analyzefilaments=True,
-                        writeonly=False):
+                        writeonly=False,
+                        load_mamba_env=True,
+                        env_name="filaments"):
     """
     Submits a SLURM job to continue LAMMPS simulations by reading the latest restart file.
     Also updates config.sh to config_restart.sh with appropriate modifications.
@@ -414,22 +416,24 @@ fi
 """
 
     if analyzefilaments:
-        script_content += f"""
-source {env_setup}/conda.sh
+        if load_mamba_env:
+            script_content += f"""source {env_setup}/conda.sh
 source {env_setup}/mamba.sh
 eval "$(mamba shell hook --shell bash)"
-mamba activate filaments
+mamba activate {env_name}"""
+        script_content += f"""
 srun papermill {analysis_script} analyze_slrm.ipynb -p runfold $dir -p num_cores {cores}
 """
 
     if additional_analysis:
+        if load_mamba_env:
+            script_content += f"""source {env_setup}/conda.sh
+source {env_setup}/mamba.sh
+eval "$(mamba shell hook --shell bash)"
+mamba activate {env_name}"""
         for analysis in additional_analysis:
             analysis_filename = os.path.basename(analysis)
             script_content += f"""
-source {env_setup}/conda.sh
-source {env_setup}/mamba.sh
-eval "$(mamba shell hook --shell bash)"
-mamba activate filaments
 srun papermill {analysis} {analysis_filename} -p runfold $dir -p rundir $dir -p num_cores {cores}
 """
 
