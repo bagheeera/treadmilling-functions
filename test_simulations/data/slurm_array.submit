@@ -28,12 +28,13 @@ if grep -q "ERROR" log.txt; then
     exit 0
 fi
 
-# Filament analysis
+# Additional analysis: read_xyz.ipynb
 source /nfs/scistore26/saricgrp/fhorvath/miniforge3/etc/profile.d/conda.sh
 source /nfs/scistore26/saricgrp/fhorvath/miniforge3/etc/profile.d/mamba.sh
 eval "$(mamba shell hook --shell bash)"
 mamba activate filaments
-srun papermill /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/utils/read_xyz.ipynb analyze_slrm.ipynb     -p runfold $dir     -p rundir $dir     -p num_cores 15
+
+srun papermill /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/utils/read_xyz.ipynb read_xyz.ipynb -p runfold $dir -p rundir $dir -p num_cores 15  -p delete 0
 
 # Additional analysis: calc_finalframe.ipynb
 source /nfs/scistore26/saricgrp/fhorvath/miniforge3/etc/profile.d/conda.sh

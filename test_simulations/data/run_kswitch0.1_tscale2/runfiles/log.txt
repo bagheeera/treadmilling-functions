@@ -21,7 +21,7 @@ Finding 1-2 1-3 1-4 neighbors ...
      0 = max # of 1-4 neighbors
     21 = max # of special neighbors
   special bonds CPU = 0.000 seconds
-  read_data CPU = 0.023 seconds
+  read_data CPU = 0.008 seconds
 
 variable            tscale equal 2 ## time is in step*${tstep}/tscale seconds
 variable            ron equal 8.0/${tscale}                                # growth rate [monomers/s]
@@ -491,4 +491,111 @@ fix                 twodim all enforce2d
 
 variable            restartsteps equal v_run_steps/20
 restart             ${restartsteps} restart
-restar
+restart             5000 restart
+
+timestep            ${tstep}
+timestep            0.001
+run                 ${run_steps}
+run                 100000
+
+CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE
+
+Your simulation uses code contributions which should be cited:
+
+- fix bond/react: reacter.org doi:10.1016/j.polymer.2017.09.038, doi:10.1021/acs.macromol.0c02012, doi:10.1016/j.cpc.2024.109287
+
+@Article{Gissinger17,
+ author = {J. R. Gissinger and B. D. Jensen and K. E. Wise},
+ title = {Modeling Chemical Reactions in Classical Molecular Dynamics Simulations},
+ journal = {Polymer},
+ year =    2017,
+ volume =  128,
+ pages =   {211--217}
+}
+
+@Article{Gissinger20,
+ author = {J. R. Gissinger, B. D. Jensen, K. E. Wise},
+ title = {{REACTER}: A Heuristic Method for Reactive Molecular Dynamics},
+ journal = {Macromolecules},
+ year =    2020,
+ volume =  53,
+ number =  22,
+ pages =   {9953--9961}
+}
+
+@Article{Gissinger24,
+ author = {J. R. Gissinger, B. D. Jensen, K. E. Wise},
+ title = {Molecular Modeling of Reactive Systems with REACTER},
+ journal = {Computer Physics Communications},
+ year =    2024,
+ volume =  304,
+ number =  109287
+}
+
+CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE
+
+Generated 0 of 45 mixed pair_coeff terms from geometric mixing rule
+Neighbor list info ...
+  update: every = 1 steps, delay = 0 steps, check = yes
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 2.3
+  ghost atom cutoff = 2.3
+  binsize = 1.15, bins = 209 209 8
+  4 neighbor lists, perpetual/occasional/extra = 3 1 0
+  (1) pair zero, perpetual
+      attributes: half, newton on, cut 2.3
+      pair build: half/bin/newton
+      stencil: half/bin/2d
+      bin: standard
+  (2) pair cosine/squared, perpetual, trim from (1)
+      attributes: half, newton on, cut 1.8
+      pair build: trim
+      stencil: none
+      bin: none
+  (3) pair soft, perpetual, skip from (1)
+      attributes: half, newton on
+      pair build: skip
+      stencil: none
+      bin: none
+  (4) fix bond/react, occasional, copy from (1)
+      attributes: half, newton on
+      pair build: copy
+      stencil: none
+      bin: none
+Per MPI rank memory allocation (min/avg/max) = 33.8 | 33.8 | 33.8 Mbytes
+   Step       v_realtime        Temp          PotEng         KinEng         TotEng         E_pair         E_bond        E_angle         Press          Volume        Density        Atoms   
+         0   0              0              0              0              0              0              0              0              0              57600          0.032465278         1870 
+     20000   10             0.48373127    -0.22935271     0.48351069     0.25415798    -0.29055155     0.039774005    0.021424841    0.012176416    57600          0.038072917         2193 
+     40000   20             0.52169873    -0.41697297     0.52146416     0.10449118    -0.49750335     0.053629153    0.026901219    0.0072264091   57600          0.038611111         2224 
+     60000   30             0.57492547    -0.49671847     0.57467648     0.077958008   -0.59022577     0.05688424     0.03662306     0.014470636    57600          0.040086806         2309 
+     80000   40             0.53744682    -0.48851844     0.53721037     0.048691933   -0.57251521     0.051183997    0.032812774    0.01999621     57600          0.039461806         2273 
+    100000   50             0.52682913    -0.32478716     0.5265932      0.20180604    -0.39409794     0.048428045    0.020882731    0.032718466    57600          0.038767361         2233 
+Loop time of 64.9861 on 15 procs for 100000 steps with 2233 atoms
+
+Performance: 132951.596 tau/day, 1538.792 timesteps/s, 3.436 Matom-step/s
+987.2% CPU use with 1 MPI tasks x 15 OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 2.5105     | 2.5105     | 2.5105     |   0.0 |  3.86
+Bond    | 1.473      | 1.473      | 1.473      |   0.0 |  2.27
+Neigh   | 2.4478     | 2.4478     | 2.4478     |   0.0 |  3.77
+Comm    | 0.44627    | 0.44627    | 0.44627    |   0.0 |  0.69
+Output  | 0.22086    | 0.22086    | 0.22086    |   0.0 |  0.34
+Modify  | 55.487     | 55.487     | 55.487     |   0.0 | 85.38
+Other   |            | 2.4        |            |       |  3.69
+
+Nlocal:           2233 ave        2233 max        2233 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:             91 ave          91 max          91 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:            883 ave         883 max         883 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 883
+Ave neighs/atom = 0.39543215
+Ave special neighs/atom = 0.36408419
+Neighbor list builds = 10247
+Dangerous builds = 0
+Total wall time: 0:01:05

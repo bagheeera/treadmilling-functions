@@ -258,3 +258,94 @@ Your simulation uses code contributions which should be cited:
 - fix bond/react: reacter.org doi:10.1016/j.polymer.2017.09.038, doi:10.1021/acs.macromol.0c02012, doi:10.1016/j.cpc.2024.109287
 The log file lists these citations in BibTeX format.
 
+CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE
+
+Generated 0 of 45 mixed pair_coeff terms from geometric mixing rule
+Neighbor list info ...
+  update: every = 1 steps, delay = 0 steps, check = yes
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 2.3
+  ghost atom cutoff = 2.3
+  binsize = 1.15, bins = 209 209 8
+  4 neighbor lists, perpetual/occasional/extra = 3 1 0
+  (1) pair zero, perpetual
+      attributes: half, newton on, cut 2.3
+      pair build: half/bin/newton
+      stencil: half/bin/2d
+      bin: standard
+  (2) pair cosine/squared, perpetual, trim from (1)
+      attributes: half, newton on, cut 1.8
+      pair build: trim
+      stencil: none
+      bin: none
+  (3) pair soft, perpetual, skip from (1)
+      attributes: half, newton on
+      pair build: skip
+      stencil: none
+      bin: none
+  (4) fix bond/react, occasional, copy from (1)
+      attributes: half, newton on
+      pair build: copy
+      stencil: none
+      bin: none
+Setting up Verlet run ...
+  Unit style    : lj
+  Current step  : 0
+  Time step     : 0.001
+Per MPI rank memory allocation (min/avg/max) = 33.8 | 33.8 | 33.8 Mbytes
+   Step       v_realtime        Temp          PotEng         KinEng         TotEng         E_pair         E_bond        E_angle         Press          Volume        Density        Atoms   
+         0   0              0              0              0              0              0              0              0              0              57600          0.032465278         1870 
+     10000   10             0.48323627    -0.32506296     0.48301672     0.15795376    -0.39180624     0.044808536    0.021934742    0.014906931    57600          0.038211806         2201 
+     20000   20             0.54103953    -0.4173297      0.54080254     0.12347284    -0.4926974      0.047080888    0.028286814    0.024789912    57600          0.039635417         2283 
+     30000   30             0.49041638    -0.39321355     0.49019822     0.096984675   -0.47125425     0.047568174    0.030472526    0.014656559    57600          0.039027778         2248 
+     40000   40             0.51102358    -0.4851826      0.51080139     0.02561879    -0.56690215     0.054366128    0.027353417    0.018659827    57600          0.039930556         2300 
+     50000   50             0.53030926    -0.28190355     0.53006854     0.24816499    -0.35277074     0.051836256    0.019030941    0.013165554    57600          0.038246528         2203 
+Loop time of 37.8683 on 15 procs for 50000 steps with 2203 atoms
+
+Performance: 114079.655 tau/day, 1320.366 timesteps/s, 2.909 Matom-step/s
+1491.3% CPU use with 1 MPI tasks x 15 OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 1.2331     | 1.2331     | 1.2331     |   0.0 |  3.26
+Bond    | 0.66975    | 0.66975    | 0.66975    |   0.0 |  1.77
+Neigh   | 2.0533     | 2.0533     | 2.0533     |   0.0 |  5.42
+Comm    | 0.27606    | 0.27606    | 0.27606    |   0.0 |  0.73
+Output  | 0.15908    | 0.15908    | 0.15908    |   0.0 |  0.42
+Modify  | 33.177     | 33.177     | 33.177     |   0.0 | 87.61
+Other   |            | 0.2996     |            |       |  0.79
+
+Nlocal:           2203 ave        2203 max        2203 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:            109 ave         109 max         109 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:            858 ave         858 max         858 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 858
+Ave neighs/atom = 0.38946891
+Ave special neighs/atom = 0.33363595
+Neighbor list builds = 10303
+Dangerous builds = 0
+Total wall time: 0:00:37
+Error unknown MAMBA_EXE: "", filename must be mamba or micromamba
+Input Notebook:  /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/utils/read_xyz.ipynb
+Output Notebook: analyze_slrm.ipynb
+Passed unknown parameter: runfold
+Passed unknown parameter: rundir
+Passed unknown parameter: num_cores
+Input notebook does not contain a cell with tag 'parameters'
+Executing:   0%|          | 0/13 [00:00<?, ?cell/s]Executing notebook with kernel: filaments
+Executing:   8%|▊         | 1/13 [00:01<00:18,  1.56s/cell]Executing:  15%|█▌        | 2/13 [00:04<00:24,  2.22s/cell]Executing:  62%|██████▏   | 8/13 [00:04<00:01,  2.53cell/s]Executing: 100%|██████████| 13/13 [00:05<00:00,  2.58cell/s]
+Error unknown MAMBA_EXE: "", filename must be mamba or micromamba
+/nfs/scistore26/saricgrp/fhorvath/miniforge3/etc/profile.d/mamba.sh: line 5: : command not found
+/nfs/scistore26/saricgrp/fhorvath/miniforge3/etc/profile.d/mamba.sh: line 5: : command not found
+Input Notebook:  /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/utils/calc_finalframe.ipynb
+Output Notebook: calc_finalframe.ipynb
+Passed unknown parameter: runfold
+Passed unknown parameter: rundir
+Passed unknown parameter: num_cores
+Input notebook does not contain a cell with tag 'parameters'
+Executing:   0%|          | 0/11 [00:00<?, ?cell/s]Executing notebook with kernel: filaments
+Executing:   9%|▉         | 1/11 [00:00<00:09,  1.05cell/s]Executing:  18%|█▊        | 2/11 [00:01<00:04,  1.96cell/s]Executing:  27%|██▋       | 3/11 [00:02<00:07,  1.04cell/s]Executing:  82%|████████▏ | 9/11 [00:02<00:00,  4.72cell/s]Executing: 100%|██████████| 11/11 [00:03<00:00,  3.32cell/s]
