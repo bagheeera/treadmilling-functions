@@ -480,6 +480,8 @@ def submit_runs(
     dontsubmit=False,
     additional_analysis=None,
     analyzefilaments=True,
+    load_mamba_env=True,
+    env_name="filaments"
 ):
     """
     Create and submit a SLURM array job for running LAMMPS simulations and/or
@@ -597,12 +599,12 @@ fi
 
     # ---- default filament analysis ----
     if analyzefilaments:
-        script_content += f"""
-# Filament analysis
-source {env_setup}/conda.sh
+        if load_mamba_env:
+            script_content += f"""source {env_setup}/conda.sh
 source {env_setup}/mamba.sh
 eval "$(mamba shell hook --shell bash)"
-mamba activate filaments
+mamba activate {env_name}"""
+        script_content += f"""
 srun papermill {analysis_script} analyze_slrm.ipynb \
     -p runfold $dir \
     -p rundir $dir \
@@ -648,13 +650,14 @@ srun papermill {analysis_script} analyze_slrm.ipynb \
                 cmd = f"srun python {path} {extra_cli}"
             else:
                 raise ValueError(f"Unsupported analysis type: {path}")
-
-            script_content += f"""
-# Additional analysis: {fname}
-source {env_setup}/conda.sh
+            if load_mamba_env:
+                script_content += f"""source {env_setup}/conda.sh
 source {env_setup}/mamba.sh
 eval "$(mamba shell hook --shell bash)"
-mamba activate {env}
+mamba activate {env}"""
+                
+            script_content += f"""
+# Additional analysis: {fname}
 {export_lines}
 {cmd}
 """
