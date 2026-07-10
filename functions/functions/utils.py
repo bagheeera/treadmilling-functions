@@ -671,58 +671,144 @@ mamba activate {env}"""
 
 
 
+import os
+import shlex
+import subprocess
+import textwrap
 
 
-def submit_papermill(job_name, ipynb_file, storeoutput, rundirs_file, ram_gb=5, ncores=1, time_hours=30, envname="filaments", extra_args=""):
+def submit_papermill(
+    job_name,
+    ipynb_file,
+    storeoutput,
+    rundirs_file,
+    ram_gb=5,
+    ncores=1,
+    time_hours=30,
+    envname="filaments",
+    extra_args="",
+    env_runner="auto",
+    env_prefix=None,
+    setup_commands="",
+):
     """
-    Generates a SLURM submission script and submits a batch job to run a Jupyter notebook via papermill.
+    Generate and submit a SLURM array job that runs a notebook with papermill.
 
-    Parameters:
-    - job_name (str): Name of the SLURM job.
-    - ipynb_file (str): Path to the Jupyter Notebook (.ipynb) file to execute.
-    - storeoutput (str): Directory where the executed notebooks will be saved.
-    - rundirs_file (str): ("runfold") Path to a file containing a list of working directories (one per line).
-    - ram_gb (int, optional): Amount of RAM requested in GB (default: 30GB).
-    - time_hours (int, optional): Maximum runtime for the job in hours (default: 30 hours).
-    - extra_args (str, optional): Additional arguments to pass to papermill (default: "").
-
-    The function:
-    1. Reads the `rundirs_file` to determine the number of SLURM array tasks.
-    2. Creates a submission script with correct SLURM directives.
-    3. Ensures necessary directories exist (`logs/` for logs and `storeoutput/` for output files).
-    4. Submits the job via `sbatch`.
-
-    Example usage:
-    ```
-    fct.utils.submit_papermill(
-        job_name="read",
-        ipynb_file="~/0__treadmilling/utils/read_xyz.ipynb",
-        storeoutput="read",
-        rundirs_file="rdir",
-        ram_gb=10,
-        ncores=1,
-        time_hours=24,
-        extra_args="-p delete True"
-    )
-    ```
+    Parameters
+    ----------
+    job_name : str
+        Name of the SLURM job.
+    ipynb_file : str
+        Path to input notebook.
+    storeoutput : str
+        Directory where executed notebooks are written.
+    rundirs_file : str
+        File containing one run directory per line.
+    ram_gb : int
+        Memory in GB.
+    ncores : int
+        Number of CPU cores.
+    time_hours : int
+        Runtime limit in hours.
+    envname : str
+        Conda/mamba/micromamba environment name.
+    extra_args : str
+        Extra arguments passed to papermill, e.g. "-p delete True".
+    env_runner : str
+        One of "auto", "micromamba", "mamba", "conda", or an absolute path.
+        "auto" tries micromamba, then mamba, then conda.
+    env_prefix : str or None
+        Optional full path to environment prefix. If given, uses `run -p`.
+        Otherwise uses `run -n envname`.
+    setup_commands : str
+        Optional shell commands to run before detecting the env runner.
+        Useful for clusters, e.g. "module load micromamba".
     """
 
     submit_file = f"{job_name}.submit"
-    ipynb_basename = os.path.splitext(os.path.basename(ipynb_file))[0]  # Extract filename without extension
 
-    # Get the number of lines in rundirs_file
+    # Convert paths like "~" to full absolute paths.
+    # This makes the SLURM script less dependent on the starting directory.
+    ipynb_file = os.path.abspath(os.path.expanduser(ipynb_file))
+    storeoutput = os.path.abspath(os.path.expanduser(storeoutput))
+    rundirs_file = os.path.abspath(os.path.expanduser(rundirs_file))
+
+    # Used later to make output notebook names.
+    ipynb_basename = os.path.splitext(os.path.basename(ipynb_file))[0]
+
+    # Count non-empty lines in rundirs_file.
+    # Each non-empty line corresponds to one SLURM array task.
     try:
         with open(rundirs_file, "r") as f:
-            max_index = sum(1 for _ in f)
+            max_index = sum(1 for line in f if line.strip())
+
         if max_index == 0:
             raise ValueError(f"Error: {rundirs_file} is empty!")
+
     except FileNotFoundError:
         raise FileNotFoundError(f"Error: {rundirs_file} not found!")
 
-    # Ensure necessary directories exist
+    # Create output/log directories before submitting.
     os.makedirs("logs", exist_ok=True)
     os.makedirs(storeoutput, exist_ok=True)
 
+    # extra_args can be either a string:
+    #     "-p delete True"
+    # or a list:
+    #     ["-p", "delete", "True"]
+    #
+    # The list form is safer if arguments contain spaces.
+    if isinstance(extra_args, (list, tuple)):
+        extra_args = shlex.join(map(str, extra_args))
+
+    # Decide whether to use an environment name or an environment path.
+    #
+    # Name:
+    #     micromamba run -n filaments ...
+    #
+    # Prefix/path:
+    #     micromamba run -p /path/to/env ...
+    if env_prefix is not None:
+        env_prefix = os.path.abspath(os.path.expanduser(env_prefix))
+        env_args_line = f"ENV_ARGS=(-p {shlex.quote(env_prefix)})"
+    else:
+        env_args_line = f"ENV_ARGS=(-n {shlex.quote(envname)})"
+
+    # Bash code that will be inserted into the submit script.
+    # It finds micromamba/mamba/conda on PATH.
+    if env_runner == "auto":
+        runner_block = r"""
+if command -v micromamba >/dev/null 2>&1; then
+    ENV_RUNNER="$(command -v micromamba)"
+elif command -v mamba >/dev/null 2>&1; then
+    ENV_RUNNER="$(command -v mamba)"
+elif command -v conda >/dev/null 2>&1; then
+    ENV_RUNNER="$(command -v conda)"
+else
+    echo "ERROR: could not find micromamba, mamba, or conda in PATH." >&2
+    echo "Use setup_commands='module load ...' or env_runner='/full/path/to/micromamba'." >&2
+    exit 1
+fi
+"""
+    else:
+        runner_block = f"""
+ENV_RUNNER={shlex.quote(env_runner)}
+
+if ! command -v "$ENV_RUNNER" >/dev/null 2>&1; then
+    echo "ERROR: env runner not found: $ENV_RUNNER" >&2
+    exit 1
+fi
+
+ENV_RUNNER="$(command -v "$ENV_RUNNER")"
+"""
+
+    # This is the actual SLURM/bash script that will be written to disk.
+    #
+    # Important:
+    #   Lines beginning with # inside this string are BASH comments,
+    #   not Python comments.
+    #
+    #   Avoid putting # comments in the middle of commands continued with "\".
     script_content = f"""#!/bin/bash
 #SBATCH --array=1-{max_index}
 #SBATCH --job-name={job_name}
@@ -732,45 +818,80 @@ def submit_papermill(job_name, ipynb_file, storeoutput, rundirs_file, ram_gb=5, 
 #SBATCH --mem={ram_gb}G
 #SBATCH --no-requeue
 #SBATCH --export=NONE
+
+set -euo pipefail
+
 unset SLURM_EXPORT_ENV
 
-export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
-export MKL_NUM_THREADS=$SLURM_CPUS_PER_TASK
-export OPENBLAS_NUM_THREADS=$SLURM_CPUS_PER_TASK
-export NUMEXPR_NUM_THREADS=$SLURM_CPUS_PER_TASK
+export OMP_NUM_THREADS="${{SLURM_CPUS_PER_TASK:-1}}"
+export MKL_NUM_THREADS="${{SLURM_CPUS_PER_TASK:-1}}"
+export OPENBLAS_NUM_THREADS="${{SLURM_CPUS_PER_TASK:-1}}"
+export NUMEXPR_NUM_THREADS="${{SLURM_CPUS_PER_TASK:-1}}"
 
-source /nfs/scistore26/saricgrp/fhorvath/miniforge3/etc/profile.d/conda.sh
-source /nfs/scistore26/saricgrp/fhorvath/miniforge3/etc/profile.d/mamba.sh
-eval "$(mamba shell hook --shell bash)"  # Add this line
-mamba activate {envname}
+{setup_commands}
 
-rundir=$(sed -n "${{SLURM_ARRAY_TASK_ID}}p" {rundirs_file})
+{runner_block}
 
-echo "Running analysis for directory: $rundir"
+{env_args_line}
 
-srun papermill {ipynb_file} {storeoutput}/{ipynb_basename}_${{SLURM_ARRAY_TASK_ID}}.ipynb --start-timeout 300 \
-            -p runfold "$rundir" -p rundir "$rundir" {extra_args}
+PM_EXTRA_ARGS=({extra_args})
+
+IPYNB_FILE={shlex.quote(ipynb_file)}
+STOREOUTPUT={shlex.quote(storeoutput)}
+RUNDIRS_FILE={shlex.quote(rundirs_file)}
+IPYNB_BASENAME={shlex.quote(ipynb_basename)}
+
+mkdir -p "$STOREOUTPUT"
+
+RUNDIR="$(awk -v task="${{SLURM_ARRAY_TASK_ID}}" 'NF {{ n++; if (n == task) {{ print; exit }} }}' "$RUNDIRS_FILE")"
+
+if [ -z "$RUNDIR" ]; then
+    echo "ERROR: empty rundir for task $SLURM_ARRAY_TASK_ID" >&2
+    exit 1
+fi
+
+OUT_IPYNB="${{STOREOUTPUT}}/${{IPYNB_BASENAME}}_${{SLURM_ARRAY_JOB_ID}}_${{SLURM_ARRAY_TASK_ID}}.ipynb"
+
+echo "Job ID: $SLURM_JOB_ID"
+echo "Array task: $SLURM_ARRAY_TASK_ID"
+echo "Run directory: $RUNDIR"
+echo "Input notebook: $IPYNB_FILE"
+echo "Output notebook: $OUT_IPYNB"
+echo "Environment runner: $ENV_RUNNER"
+echo "Environment args: ${{ENV_ARGS[*]}}"
+
+"$ENV_RUNNER" run "${{ENV_ARGS[@]}}" \\
+    papermill "$IPYNB_FILE" "$OUT_IPYNB" \\
+    --start-timeout 300 \\
+    -p runfold "$RUNDIR" \\
+    -p rundir "$RUNDIR" \\
+    "${{PM_EXTRA_ARGS[@]}}"
 """
 
-    # Write the submission script
+    # Remove accidental leading indentation from the generated bash script.
+    script_content = textwrap.dedent(script_content)
+
+    # Write the SLURM submit script.
     with open(submit_file, "w") as f:
         f.write(script_content)
-    
+
     print(f"Submission script '{submit_file}' created.")
 
-    # Submit the job
+    # Submit the script with sbatch.
     command = ["sbatch", submit_file]
     print("Executing command:", " ".join(command))
     subprocess.run(command, check=True)
+
     print(f"Job '{job_name}' submitted.")
+    
+    
+
 
 # Example usage:
 # submit_papermill("calc_lengths", "calc_filament_lengths.ipynb", "STOREOUTPUT", "rundirs", ram_gb=30, time_hours=30, extra_args="-p some_param 42")
 
 
 
-import os
-import subprocess
 
 def submit_python(job_name, py_file, rundirs_file, ram_gb=5, ncores=1, time_hours=30, envname="filaments", extra_args=None):
     """

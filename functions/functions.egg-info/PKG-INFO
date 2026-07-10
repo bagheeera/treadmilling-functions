@@ -1,0 +1,11 @@
+Metadata-Version: 2.1
+Name: functions
+Version: 0.1
+Requires-Dist: numpy
+Requires-Dist: pandas
+Requires-Dist: matplotlib
+Requires-Dist: tqdm
+Requires-Dist: pyarrow
+Requires-Dist: jinja2
+Requires-Dist: tifffile
+Requires-Dist: scikit-image
