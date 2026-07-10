@@ -467,6 +467,84 @@ def make_papermill_args(params):
 import os
 import subprocess
 
+import os
+import re
+import json
+import shlex
+import subprocess
+import textwrap
+
+
+def _make_export_lines(extra_args):
+    """
+    Convert a dict into bash export lines.
+
+    Example:
+        {"foo": 3, "bar": [1, 2]}
+
+    becomes:
+        export foo='3'
+        export bar='[1, 2]'
+
+    Values are JSON-encoded so Python scripts can later decode them with
+    json.loads(os.getenv("foo")) if needed.
+    """
+    if not extra_args:
+        return ""
+
+    lines = []
+
+    for key, value in extra_args.items():
+        if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", key):
+            raise ValueError(f"Invalid environment variable name: {key}")
+
+        encoded = json.dumps(value)
+        lines.append(f"export {key}={shlex.quote(encoded)}")
+
+    return "\n".join(lines)
+
+
+def _make_papermill_args(params):
+    """
+    Convert a dict into papermill -p arguments.
+
+    Example:
+        {"foo": 1, "bar": "abc"}
+
+    becomes:
+        -p foo 1 -p bar abc
+    """
+    if not params:
+        return ""
+
+    args = []
+
+    for key, value in params.items():
+        args.extend(["-p", str(key), str(value)])
+
+    return shlex.join(args)
+
+
+def _make_cli_args(cli_args):
+    """
+    Convert additional CLI args into a safely quoted string.
+
+    Accepts either:
+        "--flag value"
+    or:
+        ["--flag", "value"]
+    """
+    if not cli_args:
+        return ""
+
+    if isinstance(cli_args, str):
+        parts = shlex.split(cli_args)
+    else:
+        parts = list(map(str, cli_args))
+
+    return shlex.join(parts)
+
+
 def submit_runs(
     rdir,
     job_name,
@@ -476,92 +554,176 @@ def submit_runs(
     mem="30G",
     lmp_path="/nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/lammps_molid/lammps/build/lmp",
     analysis_script="/nfs/scistore26/saricgrp/fhorvath/0__treadmilling/2__synthase_setup/2__vary_potential_size/filament_analysis.ipynb",
-    env_setup="/nfs/scistore26/saricgrp/fhorvath/miniforge3/etc/profile.d",
+    env_setup=None,
     dontsubmit=False,
     additional_analysis=None,
     analyzefilaments=True,
     load_mamba_env=True,
-    env_name="filaments"
+    env_name="filaments",
+    env_runner="auto",
+    env_prefix=None,
+    setup_commands="",
 ):
     """
-    Create and submit a SLURM array job for running LAMMPS simulations and/or
-    post-processing analyses across multiple run directories.
+    Create and optionally submit a SLURM array job for LAMMPS runs and analyses.
 
-    Each SLURM array task operates in a single run directory read from `rdir`.
-    The job can optionally run a simulation step, followed by one or more
-    analysis steps executed via Papermill (for notebooks) or Python.
+    Important environment behavior:
+    - This version does NOT source hard-coded conda.sh or mamba.sh files.
+    - Instead it runs analysis commands via:
+
+          micromamba run -n ENV ...
+          mamba run -n ENV ...
+          conda run -n ENV ...
+
+      or, if env_prefix is given:
+
+          micromamba run -p /path/to/env ...
 
     Parameters
     ----------
     rdir : str
-        Path to a text file containing one run directory per line. Each line
-        corresponds to one SLURM array task.
+        Text file with one run directory per non-empty line.
 
     job_name : str
-        Name of the SLURM job.
+        SLURM job name.
 
-    analysisonly : bool, default False
-        If True, skip the LAMMPS simulation step and only run analysis.
+    analysisonly : bool
+        If True, skip the LAMMPS simulation and only run analysis.
 
-    cores : int, default 2
-        Number of CPU cores per SLURM task.
+    cores : int
+        CPU cores per SLURM task.
 
-    time : str, default "30:00:00"
-        Walltime limit for each SLURM task.
+    time : str
+        SLURM walltime, e.g. "30:00:00".
 
-    mem : str, default "30G"
-        Memory allocation per task.
+    mem : str
+        SLURM memory, e.g. "30G".
 
     lmp_path : str
-        Path to the LAMMPS executable.
+        Path to LAMMPS executable.
 
     analysis_script : str
-        Path to the default filament analysis Jupyter notebook.
+        Default filament analysis notebook.
 
-    env_setup : str
-        Path to the conda/mamba environment initialization scripts.
+    env_setup : str or None
+        Deprecated. Kept only for backwards compatibility.
+        Prefer `env_runner`, `env_prefix`, and `setup_commands`.
 
-    dontsubmit : bool, default False
-        If True, write the SLURM submission script but do not submit it.
+    dontsubmit : bool
+        If True, write the submit script but do not call sbatch.
 
-    additional_analysis : list, optional
-        Additional analysis steps to run after the default analysis.
-        Each entry may be either:
+    additional_analysis : list or None
+        Additional analysis steps.
 
-        - A string (backward compatible), interpreted as a command fragment,
-          e.g. "analysis.ipynb -p foo 1" or "script.py --flag".
+        String form:
+            "analysis.ipynb -p foo 1"
+            "script.py --flag value"
 
-        - A dict with the following optional keys:
-            * path (str): Path to a .ipynb or .py file (required).
-            * env (str): Conda environment to activate (default: "filaments").
-            * papermill_params (dict): Parameters passed via papermill `-p`
-              (notebooks only).
-            * extra_args (dict): Environment variables exported before execution.
-            * cli_args (str): Raw command-line arguments appended verbatim.
+        Dict form:
+            {
+                "path": "analysis.ipynb",
+                "env": "filaments",
+                "env_prefix": "/optional/full/env/path",
+                "papermill_params": {"foo": 1},
+                "extra_args": {"MY_VAR": [1, 2, 3]},
+                "cli_args": "--flag value",
+            }
 
-    analyzefilaments : bool, default True
-        If True, run the default filament analysis notebook before any
-        additional analysis steps.
+    analyzefilaments : bool
+        If True, run the default filament analysis notebook.
 
-    Notes
-    -----
-    - Analysis type is inferred from file extension:
-        * `.ipynb` → executed with `papermill`
-        * `.py` → executed with `python`
-    - The parameters `runfold` and `rundir` are always passed to notebooks.
-    - Environment variables in `extra_args` are JSON-encoded and must be
-      decoded inside Python using `json.loads(os.getenv(...))`.
-    - Each analysis step is skipped if an ERROR is detected in `log.txt`.
+    load_mamba_env : bool
+        If True, run analysis commands inside the selected env.
+        If False, just run papermill/python directly.
 
-    Returns
-    -------
-    None
-        Writes a SLURM submission script and optionally submits it.
+    env_name : str
+        Default environment name.
+
+    env_runner : str
+        "auto", "micromamba", "mamba", "conda", or a full path.
+
+    env_prefix : str or None
+        Optional full path to the default environment.
+
+    setup_commands : str
+        Optional shell setup before finding micromamba/mamba/conda.
+
+        Examples:
+            setup_commands='module load micromamba'
+            setup_commands='export PATH="/path/to/miniforge3/bin:$PATH"'
     """
 
     os.makedirs("logs", exist_ok=True)
 
-    script_content = f"""#!/bin/bash
+    submit_file = "slurm_array.submit"
+
+    # Make important paths absolute so the SLURM job does not depend on
+    # the directory from which it starts.
+    rdir = os.path.abspath(os.path.expanduser(rdir))
+    lmp_path = os.path.abspath(os.path.expanduser(lmp_path))
+    analysis_script = os.path.abspath(os.path.expanduser(analysis_script))
+
+    if env_prefix is not None:
+        env_prefix = os.path.abspath(os.path.expanduser(env_prefix))
+    else:
+        env_prefix = ""
+
+    # Count non-empty run-directory lines.
+    # Each non-empty line becomes one SLURM array task.
+    try:
+        with open(rdir, "r") as f:
+            line_count = sum(1 for line in f if line.strip())
+
+        if line_count == 0:
+            raise ValueError(f"Error: {rdir} is empty!")
+
+    except FileNotFoundError:
+        raise FileNotFoundError(f"Error: {rdir} not found!")
+
+    # This block is inserted into the SLURM script.
+    # It finds the environment runner inside the batch job.
+    #
+    # With --export=NONE, your interactive PATH is not automatically inherited,
+    # so use setup_commands or a full env_runner path if needed.
+    if load_mamba_env:
+        if env_runner == "auto":
+            runner_block = r"""
+if command -v micromamba >/dev/null 2>&1; then
+    ENV_RUNNER="$(command -v micromamba)"
+elif command -v mamba >/dev/null 2>&1; then
+    ENV_RUNNER="$(command -v mamba)"
+elif command -v conda >/dev/null 2>&1; then
+    ENV_RUNNER="$(command -v conda)"
+else
+    echo "ERROR: could not find micromamba, mamba, or conda in PATH." >&2
+    echo "Use setup_commands='module load ...' or env_runner='/full/path/to/mamba'." >&2
+    exit 1
+fi
+"""
+        else:
+            runner_block = f"""
+ENV_RUNNER={shlex.quote(env_runner)}
+
+if [[ "$ENV_RUNNER" == */* ]]; then
+    if [[ ! -x "$ENV_RUNNER" ]]; then
+        echo "ERROR: env runner is not executable: $ENV_RUNNER" >&2
+        exit 1
+    fi
+else
+    if ! command -v "$ENV_RUNNER" >/dev/null 2>&1; then
+        echo "ERROR: env runner not found: $ENV_RUNNER" >&2
+        exit 1
+    fi
+    ENV_RUNNER="$(command -v "$ENV_RUNNER")"
+fi
+"""
+    else:
+        runner_block = """
+ENV_RUNNER=""
+"""
+
+    script_content = f"""#!/bin/bash -l
+#SBATCH --array=1-{line_count}
 #SBATCH --job-name={job_name}
 #SBATCH --output=logs/array_job_%A_task_%a.log
 #SBATCH -c {cores}
@@ -569,105 +731,194 @@ def submit_runs(
 #SBATCH --mem={mem}
 #SBATCH --no-requeue
 #SBATCH --export=NONE
+
+set -euo pipefail
+
 unset SLURM_EXPORT_ENV
 
-export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
-export MKL_NUM_THREADS=$SLURM_CPUS_PER_TASK
-export OPENBLAS_NUM_THREADS=$SLURM_CPUS_PER_TASK
-export NUMEXPR_NUM_THREADS=$SLURM_CPUS_PER_TASK
+# Limit numerical libraries to the number of cores requested from SLURM.
+export OMP_NUM_THREADS="${{SLURM_CPUS_PER_TASK:-1}}"
+export MKL_NUM_THREADS="${{SLURM_CPUS_PER_TASK:-1}}"
+export OPENBLAS_NUM_THREADS="${{SLURM_CPUS_PER_TASK:-1}}"
+export NUMEXPR_NUM_THREADS="${{SLURM_CPUS_PER_TASK:-1}}"
 
-dir=$(sed "${{SLURM_ARRAY_TASK_ID}}q;d" {rdir})
-#SBATCH --workdir $dir
+# Optional cluster-specific setup.
+# Examples:
+#   module load micromamba
+#   export PATH="/path/to/miniforge3/bin:$PATH"
+{setup_commands}
 
+{runner_block}
+
+LOAD_MAMBA_ENV={1 if load_mamba_env else 0}
+
+RDIR_FILE={shlex.quote(rdir)}
+LMP_PATH={shlex.quote(lmp_path)}
+DEFAULT_ANALYSIS_SCRIPT={shlex.quote(analysis_script)}
+DEFAULT_ENV_NAME={shlex.quote(env_name)}
+DEFAULT_ENV_PREFIX={shlex.quote(env_prefix)}
+
+# Run a command either directly or inside a mamba/micromamba/conda environment.
+#
+# Usage:
+#   srun_in_env ENV_NAME ENV_PREFIX command arg1 arg2 ...
+#
+# If ENV_PREFIX is non-empty, it uses:
+#   micromamba run -p ENV_PREFIX command ...
+#
+# Otherwise it uses:
+#   micromamba run -n ENV_NAME command ...
+srun_in_env() {{
+    local env_name="$1"
+    shift
+
+    local env_prefix="$1"
+    shift
+
+    if [[ "$LOAD_MAMBA_ENV" == "1" ]]; then
+        if [[ -n "$env_prefix" ]]; then
+            srun "$ENV_RUNNER" run -p "$env_prefix" "$@"
+        else
+            srun "$ENV_RUNNER" run -n "$env_name" "$@"
+        fi
+    else
+        srun "$@"
+    fi
+}}
+
+# Select the Nth non-empty line from the run-directory file.
+dir="$(awk -v task="${{SLURM_ARRAY_TASK_ID}}" 'NF {{ n++; if (n == task) {{ print; exit }} }}' "$RDIR_FILE")"
+
+if [[ -z "$dir" ]]; then
+    echo "ERROR: empty run directory for task $SLURM_ARRAY_TASK_ID" >&2
+    exit 1
+fi
+
+echo "SLURM job ID: $SLURM_JOB_ID"
+echo "SLURM array task: $SLURM_ARRAY_TASK_ID"
 echo "Running in directory: $dir"
-cd $dir
+
+cd "$dir"
 """
 
     if not analysisonly:
         script_content += f"""
 touch starting_lammps.txt
-srun {lmp_path} -i config.sh
+
+echo "Starting LAMMPS"
+srun "$LMP_PATH" -i config.sh
 """
 
     script_content += """
-# Check for ERROR in log.txt before running analysis
-if grep -q "ERROR" log.txt; then
-    echo "Skipping analysis due to ERROR in log.txt"
+# If LAMMPS produced an ERROR in log.txt, skip analysis.
+if [[ -f log.txt ]] && grep -q "ERROR" log.txt; then
+    echo "Skipping analysis because ERROR was found in log.txt"
     exit 0
 fi
 """
 
-    # ---- default filament analysis ----
+    # Default filament analysis notebook.
     if analyzefilaments:
-        if load_mamba_env:
-            script_content += f"""source {env_setup}/conda.sh
-source {env_setup}/mamba.sh
-eval "$(mamba shell hook --shell bash)"
-mamba activate {env_name}"""
         script_content += f"""
-srun papermill {analysis_script} analyze_slrm.ipynb \
-    -p runfold $dir \
-    -p rundir $dir \
+echo "Running default filament analysis"
+
+srun_in_env "$DEFAULT_ENV_NAME" "$DEFAULT_ENV_PREFIX" \\
+    papermill "$DEFAULT_ANALYSIS_SCRIPT" analyze_slrm.ipynb \\
+    -p runfold "$dir" \\
+    -p rundir "$dir" \\
     -p num_cores {cores}
 """
 
-    # ---- generalized additional analysis ----
+    # Additional analysis steps.
     if additional_analysis:
         for analysis in additional_analysis:
-
             if isinstance(analysis, str):
-                # Backward compatibility:
-                # allow "script.ipynb -p foo bar"
-                parts = analysis.split()
+                # Backward-compatible form:
+                #   "notebook.ipynb -p foo 1"
+                #   "script.py --flag value"
+                parts = shlex.split(analysis)
+
+                if not parts:
+                    continue
+
                 path = parts[0]
-                extra_cli = " ".join(parts[1:])
-                env = "filaments"
+                cli_args = parts[1:]
+                env = env_name
+                analysis_env_prefix = env_prefix
                 extra_args = {}
                 papermill_params = {}
+
             else:
                 path = analysis["path"]
-                extra_cli = analysis.get("cli_args", "")
-                env = analysis.get("env", "filaments")
+                cli_args = analysis.get("cli_args", "")
+                env = analysis.get("env", env_name)
+
+                # Allows per-analysis env prefix.
+                # If not given, reuse the default env_prefix.
+                analysis_env_prefix = analysis.get("env_prefix", env_prefix)
+
+                if analysis_env_prefix is None:
+                    analysis_env_prefix = ""
+
                 extra_args = analysis.get("extra_args", {})
                 papermill_params = analysis.get("papermill_params", {})
 
-
+            path = os.path.expanduser(path)
             fname = os.path.basename(path)
-            export_lines = make_export_lines(extra_args)
 
-            pm_args = make_papermill_args(papermill_params)
+            export_lines = _make_export_lines(extra_args)
+            pm_args = _make_papermill_args(papermill_params)
+            cli_arg_string = _make_cli_args(cli_args)
+
+            quoted_path = shlex.quote(path)
+            quoted_fname = shlex.quote(fname)
+            quoted_env = shlex.quote(env)
+            quoted_env_prefix = shlex.quote(analysis_env_prefix or "")
 
             if path.endswith(".ipynb"):
-                cmd = (
-                    f"srun papermill {path} {fname} "
-                    f"-p runfold $dir "
-                    f"-p rundir $dir "
-                    f"-p num_cores {cores} "
-                    f"{pm_args} "
-                    f"{extra_cli}"
-                )
+                cmd = f"""srun_in_env {quoted_env} {quoted_env_prefix} \\
+    papermill {quoted_path} {quoted_fname} \\
+    -p runfold "$dir" \\
+    -p rundir "$dir" \\
+    -p num_cores {cores}"""
+
+                if pm_args:
+                    cmd += f" \\\n    {pm_args}"
+
+                if cli_arg_string:
+                    cmd += f" \\\n    {cli_arg_string}"
+
             elif path.endswith(".py"):
-                cmd = f"srun python {path} {extra_cli}"
+                cmd = f"""srun_in_env {quoted_env} {quoted_env_prefix} \\
+    python {quoted_path}"""
+
+                if cli_arg_string:
+                    cmd += f" \\\n    {cli_arg_string}"
+
             else:
                 raise ValueError(f"Unsupported analysis type: {path}")
-            if load_mamba_env:
-                script_content += f"""source {env_setup}/conda.sh
-source {env_setup}/mamba.sh
-eval "$(mamba shell hook --shell bash)"
-mamba activate {env}"""
-                
+
             script_content += f"""
-# Additional analysis: {fname}
+
+echo "Running additional analysis: {fname}"
+
 {export_lines}
+
 {cmd}
 """
 
-    with open("slurm_array.submit", "w") as file:
+    script_content = textwrap.dedent(script_content)
+
+    with open(submit_file, "w") as file:
         file.write(script_content)
 
+    print(f"Submission script written to: {submit_file}")
+
     if not dontsubmit:
-        line_count = sum(1 for _ in open(rdir))
-        subprocess.run(["sbatch", f"--array=1-{line_count}", "slurm_array.submit"])
+        command = ["sbatch", submit_file]
+        print("Executing command:", " ".join(command))
+        subprocess.run(command, check=True)
+        print(f"Job '{job_name}' submitted.")
 
 
 
