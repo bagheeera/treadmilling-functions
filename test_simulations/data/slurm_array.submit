@@ -1,0 +1,126 @@
+#!/bin/bash -l
+#SBATCH --array=1-9
+#SBATCH --job-name=test_simulations
+#SBATCH --output=logs/array_job_%A_task_%a.log
+#SBATCH -c 10
+#SBATCH --time=30:00:00
+#SBATCH --mem=5G
+#SBATCH --no-requeue
+#SBATCH --export=NONE
+
+set -euo pipefail
+
+unset SLURM_EXPORT_ENV
+
+# Limit numerical libraries to the number of cores requested from SLURM.
+export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-1}"
+export MKL_NUM_THREADS="${SLURM_CPUS_PER_TASK:-1}"
+export OPENBLAS_NUM_THREADS="${SLURM_CPUS_PER_TASK:-1}"
+export NUMEXPR_NUM_THREADS="${SLURM_CPUS_PER_TASK:-1}"
+
+# Optional cluster-specific setup.
+# Examples:
+#   module load micromamba
+#   export PATH="/path/to/miniforge3/bin:$PATH"
+
+
+
+ENV_RUNNER=/nfs/scistore26/saricgrp/fhorvath/miniforge3/bin/mamba
+
+if [[ "$ENV_RUNNER" == */* ]]; then
+    if [[ ! -x "$ENV_RUNNER" ]]; then
+        echo "ERROR: env runner is not executable: $ENV_RUNNER" >&2
+        exit 1
+    fi
+else
+    if ! command -v "$ENV_RUNNER" >/dev/null 2>&1; then
+        echo "ERROR: env runner not found: $ENV_RUNNER" >&2
+        exit 1
+    fi
+    ENV_RUNNER="$(command -v "$ENV_RUNNER")"
+fi
+
+
+LOAD_MAMBA_ENV=1
+
+RDIR_FILE=/nfs/scistore26/saricgrp/fhorvath/treadmilling-functions/test_simulations/data/rdir
+LMP_PATH=/nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/lammps_molid/lammps/build/lmp
+DEFAULT_ANALYSIS_SCRIPT=/nfs/scistore26/saricgrp/fhorvath/0__treadmilling/2__synthase_setup/2__vary_potential_size/filament_analysis.ipynb
+DEFAULT_ENV_NAME=filaments
+DEFAULT_ENV_PREFIX=''
+
+# Run a command either directly or inside a mamba/micromamba/conda environment.
+#
+# Usage:
+#   srun_in_env ENV_NAME ENV_PREFIX command arg1 arg2 ...
+#
+# If ENV_PREFIX is non-empty, it uses:
+#   micromamba run -p ENV_PREFIX command ...
+#
+# Otherwise it uses:
+#   micromamba run -n ENV_NAME command ...
+srun_in_env() {
+    local env_name="$1"
+    shift
+
+    local env_prefix="$1"
+    shift
+
+    if [[ "$LOAD_MAMBA_ENV" == "1" ]]; then
+        if [[ -n "$env_prefix" ]]; then
+            srun "$ENV_RUNNER" run -p "$env_prefix" "$@"
+        else
+            srun "$ENV_RUNNER" run -n "$env_name" "$@"
+        fi
+    else
+        srun "$@"
+    fi
+}
+
+# Select the Nth non-empty line from the run-directory file.
+dir="$(awk -v task="${SLURM_ARRAY_TASK_ID}" 'NF { n++; if (n == task) { print; exit } }' "$RDIR_FILE")"
+
+if [[ -z "$dir" ]]; then
+    echo "ERROR: empty run directory for task $SLURM_ARRAY_TASK_ID" >&2
+    exit 1
+fi
+
+echo "SLURM job ID: $SLURM_JOB_ID"
+echo "SLURM array task: $SLURM_ARRAY_TASK_ID"
+echo "Running in directory: $dir"
+
+cd "$dir"
+
+touch starting_lammps.txt
+
+echo "Starting LAMMPS"
+srun "$LMP_PATH" -i config.sh
+
+# If LAMMPS produced an ERROR in log.txt, skip analysis.
+if [[ -f log.txt ]] && grep -q "ERROR" log.txt; then
+    echo "Skipping analysis because ERROR was found in log.txt"
+    exit 0
+fi
+
+
+echo "Running additional analysis: read_xyz.ipynb"
+
+
+
+srun_in_env filaments '' \
+    papermill /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/utils/read_xyz.ipynb read_xyz.ipynb \
+    -p runfold "$dir" \
+    -p rundir "$dir" \
+    -p num_cores 10 \
+    -p delete 0
+
+
+echo "Running additional analysis: calc_finalframe.ipynb"
+
+
+
+srun_in_env filaments '' \
+    papermill /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/utils/calc_finalframe.ipynb calc_finalframe.ipynb \
+    -p runfold "$dir" \
+    -p rundir "$dir" \
+    -p num_cores 10

@@ -1,0 +1,353 @@
+SLURM job ID: 62195016
+SLURM array task: 1
+Running in directory: /nfs/scistore26/saricgrp/fhorvath/treadmilling-functions/test_simulations/data/run_kswitch0.5_rdis2/runfiles
+Starting LAMMPS
+LAMMPS (22 Jul 2025 - Update 1)
+  using 10 OpenMP thread(s) per MPI task
+Reading data file ...
+  orthogonal box = (-120 -120 -4.25) to (120 120 4.25)
+  1 by 1 by 1 MPI processor grid
+  reading atoms ...
+  1870 atoms
+  scanning bonds ...
+  6 = max bonds/atom
+  orthogonal box = (-120 -120 -4.25) to (120 120 4.25)
+  1 by 1 by 1 MPI processor grid
+  reading bonds ...
+  1 bonds
+Finding 1-2 1-3 1-4 neighbors ...
+  special bond factors lj:    0        0        0       
+  special bond factors coul:  0        0        0       
+     1 = max # of 1-2 neighbors
+     0 = max # of 1-3 neighbors
+     0 = max # of 1-4 neighbors
+    21 = max # of special neighbors
+  special bonds CPU = 0.000 seconds
+  read_data CPU = 0.006 seconds
+Finding 1-2 1-3 1-4 neighbors ...
+  special bond factors lj:    1        1        1       
+  special bond factors coul:  0        0        0       
+     1 = max # of 1-2 neighbors
+     0 = max # of 1-3 neighbors
+     0 = max # of 1-4 neighbors
+    21 = max # of special neighbors
+  special bonds CPU = 0.000 seconds
+WARNING: Cosine/squared set to WCA only (cutoff = sigma)
+For more information see https://docs.lammps.org/err0021 (src/EXTRA-PAIR/pair_cosine_squared.cpp:158)
+WARNING: Cosine/squared set to WCA only (cutoff = sigma)
+For more information see https://docs.lammps.org/err0021 (src/EXTRA-PAIR/pair_cosine_squared.cpp:158)
+WARNING: Cosine/squared set to WCA only (cutoff = sigma)
+For more information see https://docs.lammps.org/err0021 (src/EXTRA-PAIR/pair_cosine_squared.cpp:158)
+WARNING: Cosine/squared set to WCA only (cutoff = sigma)
+For more information see https://docs.lammps.org/err0021 (src/EXTRA-PAIR/pair_cosine_squared.cpp:158)
+WARNING: Cosine/squared set to WCA only (cutoff = sigma)
+For more information see https://docs.lammps.org/err0021 (src/EXTRA-PAIR/pair_cosine_squared.cpp:158)
+Read molecule template mPreNucleation:
+# Pre molecule template for nucleation reaction
+  1 molecules
+  1 fragments
+  0 bodies
+  2 atoms with max type 4
+  1 bonds with max type 1
+  0 angles with max type 0
+  0 dihedrals with max type 0
+  0 impropers with max type 0
+Read molecule template mPostNucleation:
+# Post molecule template for nucleation reaction
+  2 molecules
+  1 fragments
+  0 bodies
+  4 atoms with max type 4
+  2 bonds with max type 1
+  0 angles with max type 0
+  0 dihedrals with max type 0
+  0 impropers with max type 0
+Read molecule template mPreDimerOn:
+# Pre molecule template for growth reaction on dimer (filament nucleus)
+  1 molecules
+  2 fragments
+  0 bodies
+  2 atoms with max type 3
+  1 bonds with max type 1
+  0 angles with max type 0
+  0 dihedrals with max type 0
+  0 impropers with max type 0
+Read molecule template mPostDimerOn:
+# Post molecule template for growth reaction on dimer (filament nucleus)
+  1 molecules
+  2 fragments
+  0 bodies
+  3 atoms with max type 3
+  2 bonds with max type 1
+  1 angles with max type 1
+  0 dihedrals with max type 0
+  0 impropers with max type 0
+Read molecule template mPreTrimerOn:
+# Pre molecule template for growth reaction on trimer
+  1 molecules
+  2 fragments
+  0 bodies
+  3 atoms with max type 3
+  2 bonds with max type 1
+  1 angles with max type 1
+  0 dihedrals with max type 0
+  0 impropers with max type 0
+Read molecule template mPostTrimerOn:
+# Post molecule template for growth reaction on trimer
+  1 molecules
+  2 fragments
+  0 bodies
+  4 atoms with max type 3
+  3 bonds with max type 1
+  2 angles with max type 1
+  0 dihedrals with max type 0
+  0 impropers with max type 0
+Read molecule template mPreOligomerOn:
+# Pre molecule template for growth reaction on oligomer (N > 3)
+  1 molecules
+  2 fragments
+  0 bodies
+  3 atoms with max type 3
+  2 bonds with max type 1
+  1 angles with max type 1
+  0 dihedrals with max type 0
+  0 impropers with max type 0
+Read molecule template mPostOligomerOn:
+# Post molecule template for growth reaction on oligomer (N > 3)
+  1 molecules
+  2 fragments
+  0 bodies
+  4 atoms with max type 3
+  3 bonds with max type 1
+  2 angles with max type 1
+  0 dihedrals with max type 0
+  0 impropers with max type 0
+Read molecule template mPreDimerOff:
+# Pre molecule template for shrink reaction on dimer (dissolution)
+  1 molecules
+  1 fragments
+  0 bodies
+  2 atoms with max type 3
+  1 bonds with max type 1
+  0 angles with max type 0
+  0 dihedrals with max type 0
+  0 impropers with max type 0
+Read molecule template mPostDimerOff:
+# Post molecule template for shrink reaction on dimer (dissolution)
+  1 molecules
+  0 fragments
+  0 bodies
+  2 atoms with max type 3
+  0 bonds with max type 0
+  0 angles with max type 0
+  0 dihedrals with max type 0
+  0 impropers with max type 0
+Read molecule template mPreTrimerOff:
+# Pre molecule template for shrink reaction on trimer
+  1 molecules
+  1 fragments
+  0 bodies
+  3 atoms with max type 3
+  2 bonds with max type 1
+  1 angles with max type 1
+  0 dihedrals with max type 0
+  0 impropers with max type 0
+Read molecule template mPostTrimerOff:
+# Post molecule template for shrink reaction on trimer
+  1 molecules
+  0 fragments
+  0 bodies
+  3 atoms with max type 3
+  1 bonds with max type 1
+  0 angles with max type 0
+  0 dihedrals with max type 0
+  0 impropers with max type 0
+Read molecule template mPreQuartomerOff:
+# Pre molecule template for shrink reaction on quartomer (N = 4)
+  1 molecules
+  1 fragments
+  0 bodies
+  4 atoms with max type 3
+  3 bonds with max type 1
+  2 angles with max type 1
+  0 dihedrals with max type 0
+  0 impropers with max type 0
+Read molecule template mPostQuartomerOff:
+# Post molecule template for shrink reaction on quartomer (N = 4)
+  1 molecules
+  0 fragments
+  0 bodies
+  4 atoms with max type 3
+  2 bonds with max type 1
+  1 angles with max type 1
+  0 dihedrals with max type 0
+  0 impropers with max type 0
+Read molecule template mPreOligomerOff:
+# Pre molecule template for shrink reaction on oligomer (N > 4)
+  1 molecules
+  1 fragments
+  0 bodies
+  4 atoms with max type 2
+  3 bonds with max type 1
+  2 angles with max type 1
+  0 dihedrals with max type 0
+  0 impropers with max type 0
+Read molecule template mPostOligomerOff:
+# Post molecule template for shrink reaction on oligomer (N > 4)
+  1 molecules
+  0 fragments
+  0 bodies
+  4 atoms with max type 2
+  2 bonds with max type 1
+  1 angles with max type 1
+  0 dihedrals with max type 0
+  0 impropers with max type 0
+Read molecule template mPreDiviAct:
+# Pre molecule template
+  1 molecules
+  2 fragments
+  0 bodies
+  4 atoms with max type 5
+  2 bonds with max type 1
+  1 angles with max type 1
+  0 dihedrals with max type 0
+  0 impropers with max type 0
+Read molecule template mPostDiviAct:
+# post molecule template
+  1 molecules
+  2 fragments
+  0 bodies
+  4 atoms with max type 6
+  2 bonds with max type 1
+  1 angles with max type 1
+  0 dihedrals with max type 0
+  0 impropers with max type 0
+Read molecule template mPreDEact:
+# Pre molecule template
+  1 molecules
+  0 fragments
+  0 bodies
+  2 atoms with max type 7
+  0 bonds with max type 0
+  0 angles with max type 0
+  0 dihedrals with max type 0
+  0 impropers with max type 0
+Read molecule template mPostDEact:
+# Pre molecule template
+  1 molecules
+  0 fragments
+  0 bodies
+  2 atoms with max type 7
+  0 bonds with max type 0
+  0 angles with max type 0
+  0 dihedrals with max type 0
+  0 impropers with max type 0
+WARNING: Fix bond/react ('reset_mol_ids molmap' option): Pre- and post-reaction templates must both contain a 'Molecules' section for molecule IDs to be updated for a given reaction (src/REACTION/fix_bond_react.cpp:566)
+dynamic group bond_react_MASTER_group defined
+dynamic group AllAtoms_REACT defined
+dynamic group HeadMons defined
+dynamic group TailMons defined
+dynamic group HTMons defined
+dynamic group alive defined
+dynamic group grid defined
+dynamic group integr defined
+WARNING: Replacing a fix, but new group != old group (src/modify.cpp:884)
+dynamic group grid defined
+dynamic group nongrid defined
+
+CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE
+
+Your simulation uses code contributions which should be cited:
+- fix bond/react: reacter.org doi:10.1016/j.polymer.2017.09.038, doi:10.1021/acs.macromol.0c02012, doi:10.1016/j.cpc.2024.109287
+The log file lists these citations in BibTeX format.
+
+CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE
+
+Generated 0 of 45 mixed pair_coeff terms from geometric mixing rule
+Neighbor list info ...
+  update: every = 1 steps, delay = 0 steps, check = yes
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 2.3
+  ghost atom cutoff = 2.3
+  binsize = 1.15, bins = 209 209 8
+  4 neighbor lists, perpetual/occasional/extra = 3 1 0
+  (1) pair zero, perpetual
+      attributes: half, newton on, cut 2.3
+      pair build: half/bin/newton
+      stencil: half/bin/2d
+      bin: standard
+  (2) pair cosine/squared, perpetual, trim from (1)
+      attributes: half, newton on, cut 1.4000000000000001
+      pair build: trim
+      stencil: none
+      bin: none
+  (3) pair soft, perpetual, skip from (1)
+      attributes: half, newton on
+      pair build: skip
+      stencil: none
+      bin: none
+  (4) fix bond/react, occasional, copy from (1)
+      attributes: half, newton on
+      pair build: copy
+      stencil: none
+      bin: none
+Setting up Verlet run ...
+  Unit style    : lj
+  Current step  : 0
+  Time step     : 0.001
+Per MPI rank memory allocation (min/avg/max) = 25.58 | 25.58 | 25.58 Mbytes
+   Step       v_realtime        Temp          PotEng         KinEng         TotEng         E_pair         E_bond        E_angle         Press          Volume        Density        Atoms   
+         0   0              0              0              0              0              0              0              0              0              57600          0.032465278         1870 
+     10000   10             0.61525778    -1.1179798      0.61502313    -0.50295663    -1.2579413      0.067717647    0.072243879    0.02464414     57600          0.045520833         2622 
+     20000   20             0.59251443    -1.5097942      0.5923016     -0.91749259    -1.6778007      0.080365679    0.087640854    0.01484524     57600          0.048333333         2784 
+     30000   30             0.67129131    -1.6188853      0.67105519    -0.94783016    -1.8150883      0.094741058    0.10146189    -0.011497235    57600          0.049357639         2843 
+     40000   40             0.62657215    -1.6608407      0.62635639    -1.0344843     -1.8384864      0.083836796    0.093808903    0.00073198885  57600          0.050416667         2904 
+     50000   50             0.61769298    -1.6547291      0.61748165    -1.0372474     -1.8397331      0.084374213    0.10062982     0.028616154    57600          0.050746528         2923 
+Loop time of 46.7466 on 10 procs for 50000 steps with 2923 atoms
+
+Performance: 92413.223 tau/day, 1069.597 timesteps/s, 3.126 Matom-step/s
+801.0% CPU use with 1 MPI tasks x 10 OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 2.0075     | 2.0075     | 2.0075     |   0.0 |  4.29
+Bond    | 2.1207     | 2.1207     | 2.1207     |   0.0 |  4.54
+Neigh   | 3.0925     | 3.0925     | 3.0925     |   0.0 |  6.62
+Comm    | 0.36938    | 0.36938    | 0.36938    |   0.0 |  0.79
+Output  | 0.10186    | 0.10186    | 0.10186    |   0.0 |  0.22
+Modify  | 37.087     | 37.087     | 37.087     |   0.0 | 79.34
+Other   |            | 1.967      |            |       |  4.21
+
+Nlocal:           2923 ave        2923 max        2923 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:            108 ave         108 max         108 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:           2641 ave        2641 max        2641 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 2641
+Ave neighs/atom = 0.90352378
+Ave special neighs/atom = 1.1898734
+Neighbor list builds = 10379
+Dangerous builds = 0
+Total wall time: 0:00:46
+Running additional analysis: read_xyz.ipynb
+Input Notebook:  /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/utils/read_xyz.ipynb
+Output Notebook: read_xyz.ipynb
+Passed unknown parameter: runfold
+Passed unknown parameter: rundir
+Passed unknown parameter: num_cores
+Passed unknown parameter: delete
+Input notebook does not contain a cell with tag 'parameters'
+Executing:   0%|          | 0/13 [00:00<?, ?cell/s]Executing notebook with kernel: filaments
+Executing:   8%|▊         | 1/13 [00:01<00:13,  1.15s/cell]Executing:  15%|█▌        | 2/13 [00:03<00:19,  1.81s/cell]Executing:  62%|██████▏   | 8/13 [00:03<00:01,  3.12cell/s]Executing: 100%|██████████| 13/13 [00:04<00:00,  2.87cell/s]
+Running additional analysis: calc_finalframe.ipynb
+Input Notebook:  /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/utils/calc_finalframe.ipynb
+Output Notebook: calc_finalframe.ipynb
+Passed unknown parameter: runfold
+Passed unknown parameter: rundir
+Passed unknown parameter: num_cores
+Input notebook does not contain a cell with tag 'parameters'
+Executing:   0%|          | 0/11 [00:00<?, ?cell/s]Executing notebook with kernel: filaments
+Executing:   9%|▉         | 1/11 [00:00<00:08,  1.14cell/s]Executing:  18%|█▊        | 2/11 [00:01<00:04,  2.24cell/s]Executing:  27%|██▋       | 3/11 [00:02<00:06,  1.32cell/s]Executing: 100%|██████████| 11/11 [00:02<00:00,  7.53cell/s]Executing: 100%|██████████| 11/11 [00:02<00:00,  3.97cell/s]

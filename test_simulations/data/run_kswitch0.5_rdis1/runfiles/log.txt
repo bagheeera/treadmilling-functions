@@ -1,0 +1,588 @@
+units               lj
+dimension           2
+atom_style          molecular
+read_data           configuration.txt extra/bond/per/atom 5  extra/special/per/atom 20  extra/angle/per/atom 3
+Reading data file ...
+  orthogonal box = (-120 -120 -4.25) to (120 120 4.25)
+  1 by 1 by 1 MPI processor grid
+  reading atoms ...
+  1870 atoms
+  scanning bonds ...
+  6 = max bonds/atom
+  orthogonal box = (-120 -120 -4.25) to (120 120 4.25)
+  1 by 1 by 1 MPI processor grid
+  reading bonds ...
+  1 bonds
+Finding 1-2 1-3 1-4 neighbors ...
+  special bond factors lj:    0        0        0       
+  special bond factors coul:  0        0        0       
+     1 = max # of 1-2 neighbors
+     0 = max # of 1-3 neighbors
+     0 = max # of 1-4 neighbors
+    21 = max # of special neighbors
+  special bonds CPU = 0.000 seconds
+  read_data CPU = 0.011 seconds
+
+variable            tscale equal 1 ## time is in step*${tstep}/tscale seconds
+variable            ron equal 8.0/${tscale}                                # growth rate [monomers/s]
+variable            ron equal 8.0/1                                
+variable            rdis equal 1/${tscale}                               # dissociation rate [monomers/s]
+variable            rdis equal 1/1                               
+variable            rnuc equal 10.00000/${tscale}                    # nucleation rate [filaments/s]
+variable            rnuc equal 10.00000/1                    
+variable            tauhyd equal 1.0*${tscale}                          # hydrolysis time [seconds]
+variable            tauhyd equal 1.0*1                          
+variable            Kbond equal 1000.0                               # bond constant [kT/sigma2]
+variable            tstep equal 0.001                                # simulation timestep size [seconds]
+variable            realtime equal step*${tstep}/${tscale}            # simulation time in real units [seconds]
+variable            realtime equal step*0.001/${tscale}            
+variable            realtime equal step*0.001/1            
+variable            run_time equal 50*${tscale}                            # simulation run time [seconds]
+variable            run_time equal 50*1                            
+variable            treact equal 0.010000*${tscale}                            # reaction attempt time [seconds]
+variable            treact equal 0.010000*1                            
+variable            tnuc equal 0.01*${tscale}                           # nucleation reaction attempt time [seconds]
+variable            tnuc equal 0.01*1                           
+variable            frame_rate equal 10*${tscale}                          # coarse dumping interval [seconds]
+variable            frame_rate equal 10*1                          
+variable            seed equal 1234                                  # random number generator seed
+
+variable            condarr equal 1 # don't arrest
+
+variable            poff equal "1.0*v_condarr"                    # shrinking reaction initiation probability (0 or 1)
+variable            pon equal 1                      # growing reaction initiation probability (0 or 1)
+
+## synthase reactions
+variable            pact equal 0 ## 5 to 6
+
+## switch on synth-filament interactions after given time
+variable            condattract equal "v_realtime >= 10"
+variable            pdeact equal "1.0*v_condattract"  ## 6 to 5
+
+
+## box modulation
+variable  kswitch equal 0.5
+variable rswitch1 equal 40
+variable rswitch2 equal -40
+variable s1 atom 1/(1 + exp(v_kswitch*(y - v_rswitch1)))
+variable s2 atom 1/(1 + exp(v_kswitch*(y - v_rswitch2)))
+variable bumpy atom v_s1 * (1 - v_s2)
+variable sx1 atom 1/(1 + exp(v_kswitch*(x - v_rswitch1)))
+variable sx2 atom 1/(1 + exp(v_kswitch*(x - v_rswitch2)))
+variable bumpx atom v_sx1 * (1 - v_sx2)
+variable kon atom v_ron*${treact}*v_bumpy*v_bumpx
+variable kon atom v_ron*0.01*v_bumpy*v_bumpx
+
+variable            knuc atom 1 # v_ratesratio                        # nucleation probability
+variable            kdis equal ${rdis}*${treact}                          # dissociation probability
+variable            kdis equal 1*${treact}                          
+variable            kdis equal 1*0.01                          
+variable            kdis equal ${rdis}*${treact}                          # dissociation probability
+variable            kdis equal 1*${treact}                          
+variable            kdis equal 1*0.01                          
+
+variable            thyd equal ${tauhyd}/${tstep}                 # hydrolysis time [simulation steps]
+variable            thyd equal 1/${tstep}                 
+variable            thyd equal 1/0.001                 
+variable            rstep equal ${treact}/${tstep}                      # reaction interval [simulation steps]
+variable            rstep equal 0.01/${tstep}                      
+variable            rstep equal 0.01/0.001                      
+variable            nucstep equal ${tnuc}/${tstep}                      # nucleation reaction interval [simulation steps]
+variable            nucstep equal 0.01/${tstep}                      
+variable            nucstep equal 0.01/0.001                      
+variable            run_steps equal ${run_time}/${tstep}          # simulation run time [simulation steps]
+variable            run_steps equal 50/${tstep}          
+variable            run_steps equal 50/0.001          
+variable            dump_time equal ${frame_rate}/${tstep}        # dumping interval [simulation steps]
+variable            dump_time equal 10/${tstep}        
+variable            dump_time equal 10/0.001        
+
+
+variable            stab_steps equal 1
+
+special_bonds       lj 1.0 1.0 1.0
+Finding 1-2 1-3 1-4 neighbors ...
+  special bond factors lj:    1        1        1       
+  special bond factors coul:  0        0        0       
+     1 = max # of 1-2 neighbors
+     0 = max # of 1-3 neighbors
+     0 = max # of 1-4 neighbors
+    21 = max # of special neighbors
+  special bonds CPU = 0.000 seconds
+bond_style          hybrid harmonic #morse
+bond_coeff          1 harmonic ${Kbond} 1.0
+bond_coeff          1 harmonic 1000 1.0
+
+angle_style         harmonic
+angle_coeff         1 10000 180.0
+angle_coeff         2 100.0 180.0
+
+pair_style          hybrid/overlay zero 1.50 cosine/squared 1.50 soft 1.0
+pair_coeff          * * cosine/squared 0.00 1.00 1.10
+pair_coeff          * * zero 2
+pair_coeff          1 5 cosine/squared 10 0.5 0.8 wca
+pair_coeff          2 5 cosine/squared 10 0.5 0.8 wca
+pair_coeff          3 5 cosine/squared 10 0.5 0.8 wca
+pair_coeff          5 5 soft 5 1
+pair_coeff          6 6 soft 5 1
+pair_coeff          5 6 soft 5 1
+
+pair_coeff          1 1 cosine/squared 10 1.00 1.05 wca
+pair_coeff          1 2 cosine/squared 1.00 1.00 1.00 wca
+WARNING: Cosine/squared set to WCA only (cutoff = sigma)
+For more information see https://docs.lammps.org/err0021 (src/EXTRA-PAIR/pair_cosine_squared.cpp:158)
+pair_coeff          1 3 cosine/squared 1.00 1.00 1.00 wca
+WARNING: Cosine/squared set to WCA only (cutoff = sigma)
+For more information see https://docs.lammps.org/err0021 (src/EXTRA-PAIR/pair_cosine_squared.cpp:158)
+pair_coeff          2 2 cosine/squared 1.00 1.00 1.00 wca
+WARNING: Cosine/squared set to WCA only (cutoff = sigma)
+For more information see https://docs.lammps.org/err0021 (src/EXTRA-PAIR/pair_cosine_squared.cpp:158)
+pair_coeff          2 3 cosine/squared 1.00 1.00 1.00 wca
+WARNING: Cosine/squared set to WCA only (cutoff = sigma)
+For more information see https://docs.lammps.org/err0021 (src/EXTRA-PAIR/pair_cosine_squared.cpp:158)
+pair_coeff          3 3 cosine/squared 1.00 1.00 1.00 wca
+WARNING: Cosine/squared set to WCA only (cutoff = sigma)
+For more information see https://docs.lammps.org/err0021 (src/EXTRA-PAIR/pair_cosine_squared.cpp:158)
+
+#neigh_modify        exclude molecule/intra all
+
+# Nucleation Reactions_rdis molecular templates
+molecule            mPreNucleation /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/pre_Nucleation.txt
+Read molecule template mPreNucleation:
+# Pre molecule template for nucleation reaction
+  1 molecules
+  1 fragments
+  0 bodies
+  2 atoms with max type 4
+  1 bonds with max type 1
+  0 angles with max type 0
+  0 dihedrals with max type 0
+  0 impropers with max type 0
+molecule            mPostNucleation /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/post_Nucleation.txt
+Read molecule template mPostNucleation:
+# Post molecule template for nucleation reaction
+  2 molecules
+  1 fragments
+  0 bodies
+  4 atoms with max type 4
+  2 bonds with max type 1
+  0 angles with max type 0
+  0 dihedrals with max type 0
+  0 impropers with max type 0
+
+# Growth Reactions_rdis molecular templates
+molecule            mPreDimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/pre_DimerOn.txt
+Read molecule template mPreDimerOn:
+# Pre molecule template for growth reaction on dimer (filament nucleus)
+  1 molecules
+  2 fragments
+  0 bodies
+  2 atoms with max type 3
+  1 bonds with max type 1
+  0 angles with max type 0
+  0 dihedrals with max type 0
+  0 impropers with max type 0
+molecule            mPostDimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/post_DimerOn.txt
+Read molecule template mPostDimerOn:
+# Post molecule template for growth reaction on dimer (filament nucleus)
+  1 molecules
+  2 fragments
+  0 bodies
+  3 atoms with max type 3
+  2 bonds with max type 1
+  1 angles with max type 1
+  0 dihedrals with max type 0
+  0 impropers with max type 0
+molecule            mPreTrimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/pre_TrimerOn.txt
+Read molecule template mPreTrimerOn:
+# Pre molecule template for growth reaction on trimer
+  1 molecules
+  2 fragments
+  0 bodies
+  3 atoms with max type 3
+  2 bonds with max type 1
+  1 angles with max type 1
+  0 dihedrals with max type 0
+  0 impropers with max type 0
+molecule            mPostTrimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/post_TrimerOn.txt
+Read molecule template mPostTrimerOn:
+# Post molecule template for growth reaction on trimer
+  1 molecules
+  2 fragments
+  0 bodies
+  4 atoms with max type 3
+  3 bonds with max type 1
+  2 angles with max type 1
+  0 dihedrals with max type 0
+  0 impropers with max type 0
+molecule            mPreOligomerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/pre_OligomerOn.txt
+Read molecule template mPreOligomerOn:
+# Pre molecule template for growth reaction on oligomer (N > 3)
+  1 molecules
+  2 fragments
+  0 bodies
+  3 atoms with max type 3
+  2 bonds with max type 1
+  1 angles with max type 1
+  0 dihedrals with max type 0
+  0 impropers with max type 0
+molecule            mPostOligomerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/post_OligomerOn.txt
+Read molecule template mPostOligomerOn:
+# Post molecule template for growth reaction on oligomer (N > 3)
+  1 molecules
+  2 fragments
+  0 bodies
+  4 atoms with max type 3
+  3 bonds with max type 1
+  2 angles with max type 1
+  0 dihedrals with max type 0
+  0 impropers with max type 0
+
+# Shrink Reactions_rdis molecular templates
+molecule            mPreDimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/pre_DimerOff.txt
+Read molecule template mPreDimerOff:
+# Pre molecule template for shrink reaction on dimer (dissolution)
+  1 molecules
+  1 fragments
+  0 bodies
+  2 atoms with max type 3
+  1 bonds with max type 1
+  0 angles with max type 0
+  0 dihedrals with max type 0
+  0 impropers with max type 0
+molecule            mPostDimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/post_DimerOff.txt
+Read molecule template mPostDimerOff:
+# Post molecule template for shrink reaction on dimer (dissolution)
+  1 molecules
+  0 fragments
+  0 bodies
+  2 atoms with max type 3
+  0 bonds with max type 0
+  0 angles with max type 0
+  0 dihedrals with max type 0
+  0 impropers with max type 0
+molecule            mPreTrimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/pre_TrimerOff.txt
+Read molecule template mPreTrimerOff:
+# Pre molecule template for shrink reaction on trimer
+  1 molecules
+  1 fragments
+  0 bodies
+  3 atoms with max type 3
+  2 bonds with max type 1
+  1 angles with max type 1
+  0 dihedrals with max type 0
+  0 impropers with max type 0
+molecule            mPostTrimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/post_TrimerOff.txt
+Read molecule template mPostTrimerOff:
+# Post molecule template for shrink reaction on trimer
+  1 molecules
+  0 fragments
+  0 bodies
+  3 atoms with max type 3
+  1 bonds with max type 1
+  0 angles with max type 0
+  0 dihedrals with max type 0
+  0 impropers with max type 0
+molecule            mPreQuartomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/pre_QuartomerOff.txt
+Read molecule template mPreQuartomerOff:
+# Pre molecule template for shrink reaction on quartomer (N = 4)
+  1 molecules
+  1 fragments
+  0 bodies
+  4 atoms with max type 3
+  3 bonds with max type 1
+  2 angles with max type 1
+  0 dihedrals with max type 0
+  0 impropers with max type 0
+molecule            mPostQuartomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/post_QuartomerOff.txt
+Read molecule template mPostQuartomerOff:
+# Post molecule template for shrink reaction on quartomer (N = 4)
+  1 molecules
+  0 fragments
+  0 bodies
+  4 atoms with max type 3
+  2 bonds with max type 1
+  1 angles with max type 1
+  0 dihedrals with max type 0
+  0 impropers with max type 0
+molecule            mPreOligomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/pre_OligomerOff.txt
+Read molecule template mPreOligomerOff:
+# Pre molecule template for shrink reaction on oligomer (N > 4)
+  1 molecules
+  1 fragments
+  0 bodies
+  4 atoms with max type 2
+  3 bonds with max type 1
+  2 angles with max type 1
+  0 dihedrals with max type 0
+  0 impropers with max type 0
+molecule            mPostOligomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/post_OligomerOff.txt
+Read molecule template mPostOligomerOff:
+# Post molecule template for shrink reaction on oligomer (N > 4)
+  1 molecules
+  0 fragments
+  0 bodies
+  4 atoms with max type 2
+  2 bonds with max type 1
+  1 angles with max type 1
+  0 dihedrals with max type 0
+  0 impropers with max type 0
+
+# div templates
+molecule mPreDiviAct /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/pre_div_act.txt
+Read molecule template mPreDiviAct:
+# Pre molecule template
+  1 molecules
+  2 fragments
+  0 bodies
+  4 atoms with max type 5
+  2 bonds with max type 1
+  1 angles with max type 1
+  0 dihedrals with max type 0
+  0 impropers with max type 0
+molecule mPostDiviAct /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/post_div_act.txt
+Read molecule template mPostDiviAct:
+# post molecule template
+  1 molecules
+  2 fragments
+  0 bodies
+  4 atoms with max type 6
+  2 bonds with max type 1
+  1 angles with max type 1
+  0 dihedrals with max type 0
+  0 impropers with max type 0
+molecule mPreDEact /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/pre_DEact.txt
+Read molecule template mPreDEact:
+# Pre molecule template
+  1 molecules
+  0 fragments
+  0 bodies
+  2 atoms with max type 7
+  0 bonds with max type 0
+  0 angles with max type 0
+  0 dihedrals with max type 0
+  0 impropers with max type 0
+molecule mPostDEact /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/post_DEact.txt
+Read molecule template mPostDEact:
+# Pre molecule template
+  1 molecules
+  0 fragments
+  0 bodies
+  2 atoms with max type 7
+  0 bonds with max type 0
+  0 angles with max type 0
+  0 dihedrals with max type 0
+  0 impropers with max type 0
+
+variable            vCreationSteps atom i_creation_steps
+variable            vHydrolysisRn atom d_hydrolysis_rn
+fix freact all bond/react  stabilization yes AllAtoms 0.1  reset_mol_ids molmap lifetime hydrolysis ${seed}                 react Nucleation all ${nucstep} 0.900000 1.100000 mPreNucleation mPostNucleation /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_Nucleation.txt prob v_pon ${seed} stabilize_steps ${stab_steps} modify_create overlap 1 modify_create nuc yes                         react DimerOn all ${rstep} 0.900000 1.100000 mPreDimerOn mPostDimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOn.txt prob v_pon ${seed} stabilize_steps ${stab_steps} modify_create fit 1 modify_create overlap 1                         react TrimerOn all ${rstep} 0.900000 1.100000 mPreTrimerOn mPostTrimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOn.txt prob v_pon ${seed} stabilize_steps ${stab_steps} modify_create fit 1 modify_create overlap 1                         react OligomerOn all ${rstep} 0.900000 1.100000 mPreOligomerOn mPostOligomerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOn.txt prob v_pon ${seed} stabilize_steps ${stab_steps} modify_create fit 1 modify_create overlap 1                         react OligomerOff all ${rstep} 0.900000 1.100000 mPreOligomerOff mPostOligomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps}                         react QuartomerOff all ${rstep} 0.900000 1.100000 mPreQuartomerOff mPostQuartomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_QuartomerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps}                         react TrimerOff all ${rstep} 0.900000 1.100000 mPreTrimerOff mPostTrimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps}                         react DimerOff all ${rstep} 0.900000 1.100000 mPreDimerOff mPostDimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps} 				react diviact  					all  ${rstep}  					0.100000 10  					mPreDiviAct mPostDiviAct  /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DivAct.txt 					prob v_pact ${seed} 				react divideact 					all ${rstep}   					0.000000 9999 					mPreDEact mPostDEact /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DEact.txt 					prob v_pdeact ${seed}
+fix freact all bond/react  stabilization yes AllAtoms 0.1  reset_mol_ids molmap lifetime hydrolysis 1234                 react Nucleation all ${nucstep} 0.900000 1.100000 mPreNucleation mPostNucleation /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_Nucleation.txt prob v_pon ${seed} stabilize_steps ${stab_steps} modify_create overlap 1 modify_create nuc yes                         react DimerOn all ${rstep} 0.900000 1.100000 mPreDimerOn mPostDimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOn.txt prob v_pon ${seed} stabilize_steps ${stab_steps} modify_create fit 1 modify_create overlap 1                         react TrimerOn all ${rstep} 0.900000 1.100000 mPreTrimerOn mPostTrimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOn.txt prob v_pon ${seed} stabilize_steps ${stab_steps} modify_create fit 1 modify_create overlap 1                         react OligomerOn all ${rstep} 0.900000 1.100000 mPreOligomerOn mPostOligomerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOn.txt prob v_pon ${seed} stabilize_steps ${stab_steps} modify_create fit 1 modify_create overlap 1                         react OligomerOff all ${rstep} 0.900000 1.100000 mPreOligomerOff mPostOligomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps}                         react QuartomerOff all ${rstep} 0.900000 1.100000 mPreQuartomerOff mPostQuartomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_QuartomerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps}                         react TrimerOff all ${rstep} 0.900000 1.100000 mPreTrimerOff mPostTrimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps}                         react DimerOff all ${rstep} 0.900000 1.100000 mPreDimerOff mPostDimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps} 				react diviact  					all  ${rstep}  					0.100000 10  					mPreDiviAct mPostDiviAct  /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DivAct.txt 					prob v_pact ${seed} 				react divideact 					all ${rstep}   					0.000000 9999 					mPreDEact mPostDEact /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DEact.txt 					prob v_pdeact ${seed}
+fix freact all bond/react  stabilization yes AllAtoms 0.1  reset_mol_ids molmap lifetime hydrolysis 1234                 react Nucleation all 10 0.900000 1.100000 mPreNucleation mPostNucleation /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_Nucleation.txt prob v_pon ${seed} stabilize_steps ${stab_steps} modify_create overlap 1 modify_create nuc yes                         react DimerOn all ${rstep} 0.900000 1.100000 mPreDimerOn mPostDimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOn.txt prob v_pon ${seed} stabilize_steps ${stab_steps} modify_create fit 1 modify_create overlap 1                         react TrimerOn all ${rstep} 0.900000 1.100000 mPreTrimerOn mPostTrimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOn.txt prob v_pon ${seed} stabilize_steps ${stab_steps} modify_create fit 1 modify_create overlap 1                         react OligomerOn all ${rstep} 0.900000 1.100000 mPreOligomerOn mPostOligomerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOn.txt prob v_pon ${seed} stabilize_steps ${stab_steps} modify_create fit 1 modify_create overlap 1                         react OligomerOff all ${rstep} 0.900000 1.100000 mPreOligomerOff mPostOligomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps}                         react QuartomerOff all ${rstep} 0.900000 1.100000 mPreQuartomerOff mPostQuartomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_QuartomerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps}                         react TrimerOff all ${rstep} 0.900000 1.100000 mPreTrimerOff mPostTrimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps}                         react DimerOff all ${rstep} 0.900000 1.100000 mPreDimerOff mPostDimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps} 				react diviact  					all  ${rstep}  					0.100000 10  					mPreDiviAct mPostDiviAct  /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DivAct.txt 					prob v_pact ${seed} 				react divideact 					all ${rstep}   					0.000000 9999 					mPreDEact mPostDEact /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DEact.txt 					prob v_pdeact ${seed}
+fix freact all bond/react  stabilization yes AllAtoms 0.1  reset_mol_ids molmap lifetime hydrolysis 1234                 react Nucleation all 10 0.900000 1.100000 mPreNucleation mPostNucleation /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_Nucleation.txt prob v_pon 1234 stabilize_steps ${stab_steps} modify_create overlap 1 modify_create nuc yes                         react DimerOn all ${rstep} 0.900000 1.100000 mPreDimerOn mPostDimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOn.txt prob v_pon ${seed} stabilize_steps ${stab_steps} modify_create fit 1 modify_create overlap 1                         react TrimerOn all ${rstep} 0.900000 1.100000 mPreTrimerOn mPostTrimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOn.txt prob v_pon ${seed} stabilize_steps ${stab_steps} modify_create fit 1 modify_create overlap 1                         react OligomerOn all ${rstep} 0.900000 1.100000 mPreOligomerOn mPostOligomerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOn.txt prob v_pon ${seed} stabilize_steps ${stab_steps} modify_create fit 1 modify_create overlap 1                         react OligomerOff all ${rstep} 0.900000 1.100000 mPreOligomerOff mPostOligomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps}                         react QuartomerOff all ${rstep} 0.900000 1.100000 mPreQuartomerOff mPostQuartomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_QuartomerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps}                         react TrimerOff all ${rstep} 0.900000 1.100000 mPreTrimerOff mPostTrimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps}                         react DimerOff all ${rstep} 0.900000 1.100000 mPreDimerOff mPostDimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps} 				react diviact  					all  ${rstep}  					0.100000 10  					mPreDiviAct mPostDiviAct  /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DivAct.txt 					prob v_pact ${seed} 				react divideact 					all ${rstep}   					0.000000 9999 					mPreDEact mPostDEact /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DEact.txt 					prob v_pdeact ${seed}
+fix freact all bond/react  stabilization yes AllAtoms 0.1  reset_mol_ids molmap lifetime hydrolysis 1234                 react Nucleation all 10 0.900000 1.100000 mPreNucleation mPostNucleation /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_Nucleation.txt prob v_pon 1234 stabilize_steps 1 modify_create overlap 1 modify_create nuc yes                         react DimerOn all ${rstep} 0.900000 1.100000 mPreDimerOn mPostDimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOn.txt prob v_pon ${seed} stabilize_steps ${stab_steps} modify_create fit 1 modify_create overlap 1                         react TrimerOn all ${rstep} 0.900000 1.100000 mPreTrimerOn mPostTrimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOn.txt prob v_pon ${seed} stabilize_steps ${stab_steps} modify_create fit 1 modify_create overlap 1                         react OligomerOn all ${rstep} 0.900000 1.100000 mPreOligomerOn mPostOligomerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOn.txt prob v_pon ${seed} stabilize_steps ${stab_steps} modify_create fit 1 modify_create overlap 1                         react OligomerOff all ${rstep} 0.900000 1.100000 mPreOligomerOff mPostOligomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps}                         react QuartomerOff all ${rstep} 0.900000 1.100000 mPreQuartomerOff mPostQuartomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_QuartomerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps}                         react TrimerOff all ${rstep} 0.900000 1.100000 mPreTrimerOff mPostTrimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps}                         react DimerOff all ${rstep} 0.900000 1.100000 mPreDimerOff mPostDimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps} 				react diviact  					all  ${rstep}  					0.100000 10  					mPreDiviAct mPostDiviAct  /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DivAct.txt 					prob v_pact ${seed} 				react divideact 					all ${rstep}   					0.000000 9999 					mPreDEact mPostDEact /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DEact.txt 					prob v_pdeact ${seed}
+fix freact all bond/react  stabilization yes AllAtoms 0.1  reset_mol_ids molmap lifetime hydrolysis 1234                 react Nucleation all 10 0.900000 1.100000 mPreNucleation mPostNucleation /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_Nucleation.txt prob v_pon 1234 stabilize_steps 1 modify_create overlap 1 modify_create nuc yes                         react DimerOn all 10 0.900000 1.100000 mPreDimerOn mPostDimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOn.txt prob v_pon ${seed} stabilize_steps ${stab_steps} modify_create fit 1 modify_create overlap 1                         react TrimerOn all ${rstep} 0.900000 1.100000 mPreTrimerOn mPostTrimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOn.txt prob v_pon ${seed} stabilize_steps ${stab_steps} modify_create fit 1 modify_create overlap 1                         react OligomerOn all ${rstep} 0.900000 1.100000 mPreOligomerOn mPostOligomerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOn.txt prob v_pon ${seed} stabilize_steps ${stab_steps} modify_create fit 1 modify_create overlap 1                         react OligomerOff all ${rstep} 0.900000 1.100000 mPreOligomerOff mPostOligomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps}                         react QuartomerOff all ${rstep} 0.900000 1.100000 mPreQuartomerOff mPostQuartomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_QuartomerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps}                         react TrimerOff all ${rstep} 0.900000 1.100000 mPreTrimerOff mPostTrimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps}                         react DimerOff all ${rstep} 0.900000 1.100000 mPreDimerOff mPostDimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps} 				react diviact  					all  ${rstep}  					0.100000 10  					mPreDiviAct mPostDiviAct  /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DivAct.txt 					prob v_pact ${seed} 				react divideact 					all ${rstep}   					0.000000 9999 					mPreDEact mPostDEact /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DEact.txt 					prob v_pdeact ${seed}
+fix freact all bond/react  stabilization yes AllAtoms 0.1  reset_mol_ids molmap lifetime hydrolysis 1234                 react Nucleation all 10 0.900000 1.100000 mPreNucleation mPostNucleation /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_Nucleation.txt prob v_pon 1234 stabilize_steps 1 modify_create overlap 1 modify_create nuc yes                         react DimerOn all 10 0.900000 1.100000 mPreDimerOn mPostDimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOn.txt prob v_pon 1234 stabilize_steps ${stab_steps} modify_create fit 1 modify_create overlap 1                         react TrimerOn all ${rstep} 0.900000 1.100000 mPreTrimerOn mPostTrimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOn.txt prob v_pon ${seed} stabilize_steps ${stab_steps} modify_create fit 1 modify_create overlap 1                         react OligomerOn all ${rstep} 0.900000 1.100000 mPreOligomerOn mPostOligomerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOn.txt prob v_pon ${seed} stabilize_steps ${stab_steps} modify_create fit 1 modify_create overlap 1                         react OligomerOff all ${rstep} 0.900000 1.100000 mPreOligomerOff mPostOligomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps}                         react QuartomerOff all ${rstep} 0.900000 1.100000 mPreQuartomerOff mPostQuartomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_QuartomerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps}                         react TrimerOff all ${rstep} 0.900000 1.100000 mPreTrimerOff mPostTrimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps}                         react DimerOff all ${rstep} 0.900000 1.100000 mPreDimerOff mPostDimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps} 				react diviact  					all  ${rstep}  					0.100000 10  					mPreDiviAct mPostDiviAct  /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DivAct.txt 					prob v_pact ${seed} 				react divideact 					all ${rstep}   					0.000000 9999 					mPreDEact mPostDEact /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DEact.txt 					prob v_pdeact ${seed}
+fix freact all bond/react  stabilization yes AllAtoms 0.1  reset_mol_ids molmap lifetime hydrolysis 1234                 react Nucleation all 10 0.900000 1.100000 mPreNucleation mPostNucleation /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_Nucleation.txt prob v_pon 1234 stabilize_steps 1 modify_create overlap 1 modify_create nuc yes                         react DimerOn all 10 0.900000 1.100000 mPreDimerOn mPostDimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react TrimerOn all ${rstep} 0.900000 1.100000 mPreTrimerOn mPostTrimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOn.txt prob v_pon ${seed} stabilize_steps ${stab_steps} modify_create fit 1 modify_create overlap 1                         react OligomerOn all ${rstep} 0.900000 1.100000 mPreOligomerOn mPostOligomerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOn.txt prob v_pon ${seed} stabilize_steps ${stab_steps} modify_create fit 1 modify_create overlap 1                         react OligomerOff all ${rstep} 0.900000 1.100000 mPreOligomerOff mPostOligomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps}                         react QuartomerOff all ${rstep} 0.900000 1.100000 mPreQuartomerOff mPostQuartomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_QuartomerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps}                         react TrimerOff all ${rstep} 0.900000 1.100000 mPreTrimerOff mPostTrimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps}                         react DimerOff all ${rstep} 0.900000 1.100000 mPreDimerOff mPostDimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps} 				react diviact  					all  ${rstep}  					0.100000 10  					mPreDiviAct mPostDiviAct  /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DivAct.txt 					prob v_pact ${seed} 				react divideact 					all ${rstep}   					0.000000 9999 					mPreDEact mPostDEact /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DEact.txt 					prob v_pdeact ${seed}
+fix freact all bond/react  stabilization yes AllAtoms 0.1  reset_mol_ids molmap lifetime hydrolysis 1234                 react Nucleation all 10 0.900000 1.100000 mPreNucleation mPostNucleation /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_Nucleation.txt prob v_pon 1234 stabilize_steps 1 modify_create overlap 1 modify_create nuc yes                         react DimerOn all 10 0.900000 1.100000 mPreDimerOn mPostDimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react TrimerOn all 10 0.900000 1.100000 mPreTrimerOn mPostTrimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOn.txt prob v_pon ${seed} stabilize_steps ${stab_steps} modify_create fit 1 modify_create overlap 1                         react OligomerOn all ${rstep} 0.900000 1.100000 mPreOligomerOn mPostOligomerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOn.txt prob v_pon ${seed} stabilize_steps ${stab_steps} modify_create fit 1 modify_create overlap 1                         react OligomerOff all ${rstep} 0.900000 1.100000 mPreOligomerOff mPostOligomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps}                         react QuartomerOff all ${rstep} 0.900000 1.100000 mPreQuartomerOff mPostQuartomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_QuartomerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps}                         react TrimerOff all ${rstep} 0.900000 1.100000 mPreTrimerOff mPostTrimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps}                         react DimerOff all ${rstep} 0.900000 1.100000 mPreDimerOff mPostDimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps} 				react diviact  					all  ${rstep}  					0.100000 10  					mPreDiviAct mPostDiviAct  /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DivAct.txt 					prob v_pact ${seed} 				react divideact 					all ${rstep}   					0.000000 9999 					mPreDEact mPostDEact /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DEact.txt 					prob v_pdeact ${seed}
+fix freact all bond/react  stabilization yes AllAtoms 0.1  reset_mol_ids molmap lifetime hydrolysis 1234                 react Nucleation all 10 0.900000 1.100000 mPreNucleation mPostNucleation /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_Nucleation.txt prob v_pon 1234 stabilize_steps 1 modify_create overlap 1 modify_create nuc yes                         react DimerOn all 10 0.900000 1.100000 mPreDimerOn mPostDimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react TrimerOn all 10 0.900000 1.100000 mPreTrimerOn mPostTrimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOn.txt prob v_pon 1234 stabilize_steps ${stab_steps} modify_create fit 1 modify_create overlap 1                         react OligomerOn all ${rstep} 0.900000 1.100000 mPreOligomerOn mPostOligomerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOn.txt prob v_pon ${seed} stabilize_steps ${stab_steps} modify_create fit 1 modify_create overlap 1                         react OligomerOff all ${rstep} 0.900000 1.100000 mPreOligomerOff mPostOligomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps}                         react QuartomerOff all ${rstep} 0.900000 1.100000 mPreQuartomerOff mPostQuartomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_QuartomerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps}                         react TrimerOff all ${rstep} 0.900000 1.100000 mPreTrimerOff mPostTrimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps}                         react DimerOff all ${rstep} 0.900000 1.100000 mPreDimerOff mPostDimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps} 				react diviact  					all  ${rstep}  					0.100000 10  					mPreDiviAct mPostDiviAct  /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DivAct.txt 					prob v_pact ${seed} 				react divideact 					all ${rstep}   					0.000000 9999 					mPreDEact mPostDEact /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DEact.txt 					prob v_pdeact ${seed}
+fix freact all bond/react  stabilization yes AllAtoms 0.1  reset_mol_ids molmap lifetime hydrolysis 1234                 react Nucleation all 10 0.900000 1.100000 mPreNucleation mPostNucleation /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_Nucleation.txt prob v_pon 1234 stabilize_steps 1 modify_create overlap 1 modify_create nuc yes                         react DimerOn all 10 0.900000 1.100000 mPreDimerOn mPostDimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react TrimerOn all 10 0.900000 1.100000 mPreTrimerOn mPostTrimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react OligomerOn all ${rstep} 0.900000 1.100000 mPreOligomerOn mPostOligomerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOn.txt prob v_pon ${seed} stabilize_steps ${stab_steps} modify_create fit 1 modify_create overlap 1                         react OligomerOff all ${rstep} 0.900000 1.100000 mPreOligomerOff mPostOligomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps}                         react QuartomerOff all ${rstep} 0.900000 1.100000 mPreQuartomerOff mPostQuartomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_QuartomerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps}                         react TrimerOff all ${rstep} 0.900000 1.100000 mPreTrimerOff mPostTrimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps}                         react DimerOff all ${rstep} 0.900000 1.100000 mPreDimerOff mPostDimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps} 				react diviact  					all  ${rstep}  					0.100000 10  					mPreDiviAct mPostDiviAct  /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DivAct.txt 					prob v_pact ${seed} 				react divideact 					all ${rstep}   					0.000000 9999 					mPreDEact mPostDEact /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DEact.txt 					prob v_pdeact ${seed}
+fix freact all bond/react  stabilization yes AllAtoms 0.1  reset_mol_ids molmap lifetime hydrolysis 1234                 react Nucleation all 10 0.900000 1.100000 mPreNucleation mPostNucleation /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_Nucleation.txt prob v_pon 1234 stabilize_steps 1 modify_create overlap 1 modify_create nuc yes                         react DimerOn all 10 0.900000 1.100000 mPreDimerOn mPostDimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react TrimerOn all 10 0.900000 1.100000 mPreTrimerOn mPostTrimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react OligomerOn all 10 0.900000 1.100000 mPreOligomerOn mPostOligomerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOn.txt prob v_pon ${seed} stabilize_steps ${stab_steps} modify_create fit 1 modify_create overlap 1                         react OligomerOff all ${rstep} 0.900000 1.100000 mPreOligomerOff mPostOligomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps}                         react QuartomerOff all ${rstep} 0.900000 1.100000 mPreQuartomerOff mPostQuartomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_QuartomerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps}                         react TrimerOff all ${rstep} 0.900000 1.100000 mPreTrimerOff mPostTrimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps}                         react DimerOff all ${rstep} 0.900000 1.100000 mPreDimerOff mPostDimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps} 				react diviact  					all  ${rstep}  					0.100000 10  					mPreDiviAct mPostDiviAct  /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DivAct.txt 					prob v_pact ${seed} 				react divideact 					all ${rstep}   					0.000000 9999 					mPreDEact mPostDEact /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DEact.txt 					prob v_pdeact ${seed}
+fix freact all bond/react  stabilization yes AllAtoms 0.1  reset_mol_ids molmap lifetime hydrolysis 1234                 react Nucleation all 10 0.900000 1.100000 mPreNucleation mPostNucleation /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_Nucleation.txt prob v_pon 1234 stabilize_steps 1 modify_create overlap 1 modify_create nuc yes                         react DimerOn all 10 0.900000 1.100000 mPreDimerOn mPostDimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react TrimerOn all 10 0.900000 1.100000 mPreTrimerOn mPostTrimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react OligomerOn all 10 0.900000 1.100000 mPreOligomerOn mPostOligomerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOn.txt prob v_pon 1234 stabilize_steps ${stab_steps} modify_create fit 1 modify_create overlap 1                         react OligomerOff all ${rstep} 0.900000 1.100000 mPreOligomerOff mPostOligomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps}                         react QuartomerOff all ${rstep} 0.900000 1.100000 mPreQuartomerOff mPostQuartomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_QuartomerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps}                         react TrimerOff all ${rstep} 0.900000 1.100000 mPreTrimerOff mPostTrimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps}                         react DimerOff all ${rstep} 0.900000 1.100000 mPreDimerOff mPostDimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps} 				react diviact  					all  ${rstep}  					0.100000 10  					mPreDiviAct mPostDiviAct  /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DivAct.txt 					prob v_pact ${seed} 				react divideact 					all ${rstep}   					0.000000 9999 					mPreDEact mPostDEact /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DEact.txt 					prob v_pdeact ${seed}
+fix freact all bond/react  stabilization yes AllAtoms 0.1  reset_mol_ids molmap lifetime hydrolysis 1234                 react Nucleation all 10 0.900000 1.100000 mPreNucleation mPostNucleation /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_Nucleation.txt prob v_pon 1234 stabilize_steps 1 modify_create overlap 1 modify_create nuc yes                         react DimerOn all 10 0.900000 1.100000 mPreDimerOn mPostDimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react TrimerOn all 10 0.900000 1.100000 mPreTrimerOn mPostTrimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react OligomerOn all 10 0.900000 1.100000 mPreOligomerOn mPostOligomerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react OligomerOff all ${rstep} 0.900000 1.100000 mPreOligomerOff mPostOligomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps}                         react QuartomerOff all ${rstep} 0.900000 1.100000 mPreQuartomerOff mPostQuartomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_QuartomerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps}                         react TrimerOff all ${rstep} 0.900000 1.100000 mPreTrimerOff mPostTrimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps}                         react DimerOff all ${rstep} 0.900000 1.100000 mPreDimerOff mPostDimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps} 				react diviact  					all  ${rstep}  					0.100000 10  					mPreDiviAct mPostDiviAct  /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DivAct.txt 					prob v_pact ${seed} 				react divideact 					all ${rstep}   					0.000000 9999 					mPreDEact mPostDEact /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DEact.txt 					prob v_pdeact ${seed}
+fix freact all bond/react  stabilization yes AllAtoms 0.1  reset_mol_ids molmap lifetime hydrolysis 1234                 react Nucleation all 10 0.900000 1.100000 mPreNucleation mPostNucleation /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_Nucleation.txt prob v_pon 1234 stabilize_steps 1 modify_create overlap 1 modify_create nuc yes                         react DimerOn all 10 0.900000 1.100000 mPreDimerOn mPostDimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react TrimerOn all 10 0.900000 1.100000 mPreTrimerOn mPostTrimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react OligomerOn all 10 0.900000 1.100000 mPreOligomerOn mPostOligomerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react OligomerOff all 10 0.900000 1.100000 mPreOligomerOff mPostOligomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps}                         react QuartomerOff all ${rstep} 0.900000 1.100000 mPreQuartomerOff mPostQuartomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_QuartomerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps}                         react TrimerOff all ${rstep} 0.900000 1.100000 mPreTrimerOff mPostTrimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps}                         react DimerOff all ${rstep} 0.900000 1.100000 mPreDimerOff mPostDimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps} 				react diviact  					all  ${rstep}  					0.100000 10  					mPreDiviAct mPostDiviAct  /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DivAct.txt 					prob v_pact ${seed} 				react divideact 					all ${rstep}   					0.000000 9999 					mPreDEact mPostDEact /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DEact.txt 					prob v_pdeact ${seed}
+fix freact all bond/react  stabilization yes AllAtoms 0.1  reset_mol_ids molmap lifetime hydrolysis 1234                 react Nucleation all 10 0.900000 1.100000 mPreNucleation mPostNucleation /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_Nucleation.txt prob v_pon 1234 stabilize_steps 1 modify_create overlap 1 modify_create nuc yes                         react DimerOn all 10 0.900000 1.100000 mPreDimerOn mPostDimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react TrimerOn all 10 0.900000 1.100000 mPreTrimerOn mPostTrimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react OligomerOn all 10 0.900000 1.100000 mPreOligomerOn mPostOligomerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react OligomerOff all 10 0.900000 1.100000 mPreOligomerOff mPostOligomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOff.txt prob v_poff 1234 stabilize_steps ${stab_steps}                         react QuartomerOff all ${rstep} 0.900000 1.100000 mPreQuartomerOff mPostQuartomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_QuartomerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps}                         react TrimerOff all ${rstep} 0.900000 1.100000 mPreTrimerOff mPostTrimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps}                         react DimerOff all ${rstep} 0.900000 1.100000 mPreDimerOff mPostDimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps} 				react diviact  					all  ${rstep}  					0.100000 10  					mPreDiviAct mPostDiviAct  /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DivAct.txt 					prob v_pact ${seed} 				react divideact 					all ${rstep}   					0.000000 9999 					mPreDEact mPostDEact /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DEact.txt 					prob v_pdeact ${seed}
+fix freact all bond/react  stabilization yes AllAtoms 0.1  reset_mol_ids molmap lifetime hydrolysis 1234                 react Nucleation all 10 0.900000 1.100000 mPreNucleation mPostNucleation /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_Nucleation.txt prob v_pon 1234 stabilize_steps 1 modify_create overlap 1 modify_create nuc yes                         react DimerOn all 10 0.900000 1.100000 mPreDimerOn mPostDimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react TrimerOn all 10 0.900000 1.100000 mPreTrimerOn mPostTrimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react OligomerOn all 10 0.900000 1.100000 mPreOligomerOn mPostOligomerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react OligomerOff all 10 0.900000 1.100000 mPreOligomerOff mPostOligomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOff.txt prob v_poff 1234 stabilize_steps 1                         react QuartomerOff all ${rstep} 0.900000 1.100000 mPreQuartomerOff mPostQuartomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_QuartomerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps}                         react TrimerOff all ${rstep} 0.900000 1.100000 mPreTrimerOff mPostTrimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps}                         react DimerOff all ${rstep} 0.900000 1.100000 mPreDimerOff mPostDimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps} 				react diviact  					all  ${rstep}  					0.100000 10  					mPreDiviAct mPostDiviAct  /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DivAct.txt 					prob v_pact ${seed} 				react divideact 					all ${rstep}   					0.000000 9999 					mPreDEact mPostDEact /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DEact.txt 					prob v_pdeact ${seed}
+fix freact all bond/react  stabilization yes AllAtoms 0.1  reset_mol_ids molmap lifetime hydrolysis 1234                 react Nucleation all 10 0.900000 1.100000 mPreNucleation mPostNucleation /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_Nucleation.txt prob v_pon 1234 stabilize_steps 1 modify_create overlap 1 modify_create nuc yes                         react DimerOn all 10 0.900000 1.100000 mPreDimerOn mPostDimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react TrimerOn all 10 0.900000 1.100000 mPreTrimerOn mPostTrimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react OligomerOn all 10 0.900000 1.100000 mPreOligomerOn mPostOligomerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react OligomerOff all 10 0.900000 1.100000 mPreOligomerOff mPostOligomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOff.txt prob v_poff 1234 stabilize_steps 1                         react QuartomerOff all 10 0.900000 1.100000 mPreQuartomerOff mPostQuartomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_QuartomerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps}                         react TrimerOff all ${rstep} 0.900000 1.100000 mPreTrimerOff mPostTrimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps}                         react DimerOff all ${rstep} 0.900000 1.100000 mPreDimerOff mPostDimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps} 				react diviact  					all  ${rstep}  					0.100000 10  					mPreDiviAct mPostDiviAct  /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DivAct.txt 					prob v_pact ${seed} 				react divideact 					all ${rstep}   					0.000000 9999 					mPreDEact mPostDEact /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DEact.txt 					prob v_pdeact ${seed}
+fix freact all bond/react  stabilization yes AllAtoms 0.1  reset_mol_ids molmap lifetime hydrolysis 1234                 react Nucleation all 10 0.900000 1.100000 mPreNucleation mPostNucleation /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_Nucleation.txt prob v_pon 1234 stabilize_steps 1 modify_create overlap 1 modify_create nuc yes                         react DimerOn all 10 0.900000 1.100000 mPreDimerOn mPostDimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react TrimerOn all 10 0.900000 1.100000 mPreTrimerOn mPostTrimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react OligomerOn all 10 0.900000 1.100000 mPreOligomerOn mPostOligomerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react OligomerOff all 10 0.900000 1.100000 mPreOligomerOff mPostOligomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOff.txt prob v_poff 1234 stabilize_steps 1                         react QuartomerOff all 10 0.900000 1.100000 mPreQuartomerOff mPostQuartomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_QuartomerOff.txt prob v_poff 1234 stabilize_steps ${stab_steps}                         react TrimerOff all ${rstep} 0.900000 1.100000 mPreTrimerOff mPostTrimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps}                         react DimerOff all ${rstep} 0.900000 1.100000 mPreDimerOff mPostDimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps} 				react diviact  					all  ${rstep}  					0.100000 10  					mPreDiviAct mPostDiviAct  /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DivAct.txt 					prob v_pact ${seed} 				react divideact 					all ${rstep}   					0.000000 9999 					mPreDEact mPostDEact /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DEact.txt 					prob v_pdeact ${seed}
+fix freact all bond/react  stabilization yes AllAtoms 0.1  reset_mol_ids molmap lifetime hydrolysis 1234                 react Nucleation all 10 0.900000 1.100000 mPreNucleation mPostNucleation /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_Nucleation.txt prob v_pon 1234 stabilize_steps 1 modify_create overlap 1 modify_create nuc yes                         react DimerOn all 10 0.900000 1.100000 mPreDimerOn mPostDimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react TrimerOn all 10 0.900000 1.100000 mPreTrimerOn mPostTrimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react OligomerOn all 10 0.900000 1.100000 mPreOligomerOn mPostOligomerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react OligomerOff all 10 0.900000 1.100000 mPreOligomerOff mPostOligomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOff.txt prob v_poff 1234 stabilize_steps 1                         react QuartomerOff all 10 0.900000 1.100000 mPreQuartomerOff mPostQuartomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_QuartomerOff.txt prob v_poff 1234 stabilize_steps 1                         react TrimerOff all ${rstep} 0.900000 1.100000 mPreTrimerOff mPostTrimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps}                         react DimerOff all ${rstep} 0.900000 1.100000 mPreDimerOff mPostDimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps} 				react diviact  					all  ${rstep}  					0.100000 10  					mPreDiviAct mPostDiviAct  /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DivAct.txt 					prob v_pact ${seed} 				react divideact 					all ${rstep}   					0.000000 9999 					mPreDEact mPostDEact /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DEact.txt 					prob v_pdeact ${seed}
+fix freact all bond/react  stabilization yes AllAtoms 0.1  reset_mol_ids molmap lifetime hydrolysis 1234                 react Nucleation all 10 0.900000 1.100000 mPreNucleation mPostNucleation /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_Nucleation.txt prob v_pon 1234 stabilize_steps 1 modify_create overlap 1 modify_create nuc yes                         react DimerOn all 10 0.900000 1.100000 mPreDimerOn mPostDimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react TrimerOn all 10 0.900000 1.100000 mPreTrimerOn mPostTrimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react OligomerOn all 10 0.900000 1.100000 mPreOligomerOn mPostOligomerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react OligomerOff all 10 0.900000 1.100000 mPreOligomerOff mPostOligomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOff.txt prob v_poff 1234 stabilize_steps 1                         react QuartomerOff all 10 0.900000 1.100000 mPreQuartomerOff mPostQuartomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_QuartomerOff.txt prob v_poff 1234 stabilize_steps 1                         react TrimerOff all 10 0.900000 1.100000 mPreTrimerOff mPostTrimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps}                         react DimerOff all ${rstep} 0.900000 1.100000 mPreDimerOff mPostDimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps} 				react diviact  					all  ${rstep}  					0.100000 10  					mPreDiviAct mPostDiviAct  /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DivAct.txt 					prob v_pact ${seed} 				react divideact 					all ${rstep}   					0.000000 9999 					mPreDEact mPostDEact /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DEact.txt 					prob v_pdeact ${seed}
+fix freact all bond/react  stabilization yes AllAtoms 0.1  reset_mol_ids molmap lifetime hydrolysis 1234                 react Nucleation all 10 0.900000 1.100000 mPreNucleation mPostNucleation /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_Nucleation.txt prob v_pon 1234 stabilize_steps 1 modify_create overlap 1 modify_create nuc yes                         react DimerOn all 10 0.900000 1.100000 mPreDimerOn mPostDimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react TrimerOn all 10 0.900000 1.100000 mPreTrimerOn mPostTrimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react OligomerOn all 10 0.900000 1.100000 mPreOligomerOn mPostOligomerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react OligomerOff all 10 0.900000 1.100000 mPreOligomerOff mPostOligomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOff.txt prob v_poff 1234 stabilize_steps 1                         react QuartomerOff all 10 0.900000 1.100000 mPreQuartomerOff mPostQuartomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_QuartomerOff.txt prob v_poff 1234 stabilize_steps 1                         react TrimerOff all 10 0.900000 1.100000 mPreTrimerOff mPostTrimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOff.txt prob v_poff 1234 stabilize_steps ${stab_steps}                         react DimerOff all ${rstep} 0.900000 1.100000 mPreDimerOff mPostDimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps} 				react diviact  					all  ${rstep}  					0.100000 10  					mPreDiviAct mPostDiviAct  /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DivAct.txt 					prob v_pact ${seed} 				react divideact 					all ${rstep}   					0.000000 9999 					mPreDEact mPostDEact /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DEact.txt 					prob v_pdeact ${seed}
+fix freact all bond/react  stabilization yes AllAtoms 0.1  reset_mol_ids molmap lifetime hydrolysis 1234                 react Nucleation all 10 0.900000 1.100000 mPreNucleation mPostNucleation /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_Nucleation.txt prob v_pon 1234 stabilize_steps 1 modify_create overlap 1 modify_create nuc yes                         react DimerOn all 10 0.900000 1.100000 mPreDimerOn mPostDimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react TrimerOn all 10 0.900000 1.100000 mPreTrimerOn mPostTrimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react OligomerOn all 10 0.900000 1.100000 mPreOligomerOn mPostOligomerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react OligomerOff all 10 0.900000 1.100000 mPreOligomerOff mPostOligomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOff.txt prob v_poff 1234 stabilize_steps 1                         react QuartomerOff all 10 0.900000 1.100000 mPreQuartomerOff mPostQuartomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_QuartomerOff.txt prob v_poff 1234 stabilize_steps 1                         react TrimerOff all 10 0.900000 1.100000 mPreTrimerOff mPostTrimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOff.txt prob v_poff 1234 stabilize_steps 1                         react DimerOff all ${rstep} 0.900000 1.100000 mPreDimerOff mPostDimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps} 				react diviact  					all  ${rstep}  					0.100000 10  					mPreDiviAct mPostDiviAct  /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DivAct.txt 					prob v_pact ${seed} 				react divideact 					all ${rstep}   					0.000000 9999 					mPreDEact mPostDEact /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DEact.txt 					prob v_pdeact ${seed}
+fix freact all bond/react  stabilization yes AllAtoms 0.1  reset_mol_ids molmap lifetime hydrolysis 1234                 react Nucleation all 10 0.900000 1.100000 mPreNucleation mPostNucleation /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_Nucleation.txt prob v_pon 1234 stabilize_steps 1 modify_create overlap 1 modify_create nuc yes                         react DimerOn all 10 0.900000 1.100000 mPreDimerOn mPostDimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react TrimerOn all 10 0.900000 1.100000 mPreTrimerOn mPostTrimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react OligomerOn all 10 0.900000 1.100000 mPreOligomerOn mPostOligomerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react OligomerOff all 10 0.900000 1.100000 mPreOligomerOff mPostOligomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOff.txt prob v_poff 1234 stabilize_steps 1                         react QuartomerOff all 10 0.900000 1.100000 mPreQuartomerOff mPostQuartomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_QuartomerOff.txt prob v_poff 1234 stabilize_steps 1                         react TrimerOff all 10 0.900000 1.100000 mPreTrimerOff mPostTrimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOff.txt prob v_poff 1234 stabilize_steps 1                         react DimerOff all 10 0.900000 1.100000 mPreDimerOff mPostDimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOff.txt prob v_poff ${seed} stabilize_steps ${stab_steps} 				react diviact  					all  ${rstep}  					0.100000 10  					mPreDiviAct mPostDiviAct  /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DivAct.txt 					prob v_pact ${seed} 				react divideact 					all ${rstep}   					0.000000 9999 					mPreDEact mPostDEact /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DEact.txt 					prob v_pdeact ${seed}
+fix freact all bond/react  stabilization yes AllAtoms 0.1  reset_mol_ids molmap lifetime hydrolysis 1234                 react Nucleation all 10 0.900000 1.100000 mPreNucleation mPostNucleation /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_Nucleation.txt prob v_pon 1234 stabilize_steps 1 modify_create overlap 1 modify_create nuc yes                         react DimerOn all 10 0.900000 1.100000 mPreDimerOn mPostDimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react TrimerOn all 10 0.900000 1.100000 mPreTrimerOn mPostTrimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react OligomerOn all 10 0.900000 1.100000 mPreOligomerOn mPostOligomerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react OligomerOff all 10 0.900000 1.100000 mPreOligomerOff mPostOligomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOff.txt prob v_poff 1234 stabilize_steps 1                         react QuartomerOff all 10 0.900000 1.100000 mPreQuartomerOff mPostQuartomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_QuartomerOff.txt prob v_poff 1234 stabilize_steps 1                         react TrimerOff all 10 0.900000 1.100000 mPreTrimerOff mPostTrimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOff.txt prob v_poff 1234 stabilize_steps 1                         react DimerOff all 10 0.900000 1.100000 mPreDimerOff mPostDimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOff.txt prob v_poff 1234 stabilize_steps ${stab_steps} 				react diviact  					all  ${rstep}  					0.100000 10  					mPreDiviAct mPostDiviAct  /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DivAct.txt 					prob v_pact ${seed} 				react divideact 					all ${rstep}   					0.000000 9999 					mPreDEact mPostDEact /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DEact.txt 					prob v_pdeact ${seed}
+fix freact all bond/react  stabilization yes AllAtoms 0.1  reset_mol_ids molmap lifetime hydrolysis 1234                 react Nucleation all 10 0.900000 1.100000 mPreNucleation mPostNucleation /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_Nucleation.txt prob v_pon 1234 stabilize_steps 1 modify_create overlap 1 modify_create nuc yes                         react DimerOn all 10 0.900000 1.100000 mPreDimerOn mPostDimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react TrimerOn all 10 0.900000 1.100000 mPreTrimerOn mPostTrimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react OligomerOn all 10 0.900000 1.100000 mPreOligomerOn mPostOligomerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react OligomerOff all 10 0.900000 1.100000 mPreOligomerOff mPostOligomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOff.txt prob v_poff 1234 stabilize_steps 1                         react QuartomerOff all 10 0.900000 1.100000 mPreQuartomerOff mPostQuartomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_QuartomerOff.txt prob v_poff 1234 stabilize_steps 1                         react TrimerOff all 10 0.900000 1.100000 mPreTrimerOff mPostTrimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOff.txt prob v_poff 1234 stabilize_steps 1                         react DimerOff all 10 0.900000 1.100000 mPreDimerOff mPostDimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOff.txt prob v_poff 1234 stabilize_steps 1 				react diviact  					all  ${rstep}  					0.100000 10  					mPreDiviAct mPostDiviAct  /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DivAct.txt 					prob v_pact ${seed} 				react divideact 					all ${rstep}   					0.000000 9999 					mPreDEact mPostDEact /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DEact.txt 					prob v_pdeact ${seed}
+fix freact all bond/react  stabilization yes AllAtoms 0.1  reset_mol_ids molmap lifetime hydrolysis 1234                 react Nucleation all 10 0.900000 1.100000 mPreNucleation mPostNucleation /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_Nucleation.txt prob v_pon 1234 stabilize_steps 1 modify_create overlap 1 modify_create nuc yes                         react DimerOn all 10 0.900000 1.100000 mPreDimerOn mPostDimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react TrimerOn all 10 0.900000 1.100000 mPreTrimerOn mPostTrimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react OligomerOn all 10 0.900000 1.100000 mPreOligomerOn mPostOligomerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react OligomerOff all 10 0.900000 1.100000 mPreOligomerOff mPostOligomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOff.txt prob v_poff 1234 stabilize_steps 1                         react QuartomerOff all 10 0.900000 1.100000 mPreQuartomerOff mPostQuartomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_QuartomerOff.txt prob v_poff 1234 stabilize_steps 1                         react TrimerOff all 10 0.900000 1.100000 mPreTrimerOff mPostTrimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOff.txt prob v_poff 1234 stabilize_steps 1                         react DimerOff all 10 0.900000 1.100000 mPreDimerOff mPostDimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOff.txt prob v_poff 1234 stabilize_steps 1 				react diviact  					all  10  					0.100000 10  					mPreDiviAct mPostDiviAct  /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DivAct.txt 					prob v_pact ${seed} 				react divideact 					all ${rstep}   					0.000000 9999 					mPreDEact mPostDEact /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DEact.txt 					prob v_pdeact ${seed}
+fix freact all bond/react  stabilization yes AllAtoms 0.1  reset_mol_ids molmap lifetime hydrolysis 1234                 react Nucleation all 10 0.900000 1.100000 mPreNucleation mPostNucleation /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_Nucleation.txt prob v_pon 1234 stabilize_steps 1 modify_create overlap 1 modify_create nuc yes                         react DimerOn all 10 0.900000 1.100000 mPreDimerOn mPostDimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react TrimerOn all 10 0.900000 1.100000 mPreTrimerOn mPostTrimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react OligomerOn all 10 0.900000 1.100000 mPreOligomerOn mPostOligomerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react OligomerOff all 10 0.900000 1.100000 mPreOligomerOff mPostOligomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOff.txt prob v_poff 1234 stabilize_steps 1                         react QuartomerOff all 10 0.900000 1.100000 mPreQuartomerOff mPostQuartomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_QuartomerOff.txt prob v_poff 1234 stabilize_steps 1                         react TrimerOff all 10 0.900000 1.100000 mPreTrimerOff mPostTrimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOff.txt prob v_poff 1234 stabilize_steps 1                         react DimerOff all 10 0.900000 1.100000 mPreDimerOff mPostDimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOff.txt prob v_poff 1234 stabilize_steps 1 				react diviact  					all  10  					0.100000 10  					mPreDiviAct mPostDiviAct  /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DivAct.txt 					prob v_pact 1234 				react divideact 					all ${rstep}   					0.000000 9999 					mPreDEact mPostDEact /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DEact.txt 					prob v_pdeact ${seed}
+fix freact all bond/react  stabilization yes AllAtoms 0.1  reset_mol_ids molmap lifetime hydrolysis 1234                 react Nucleation all 10 0.900000 1.100000 mPreNucleation mPostNucleation /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_Nucleation.txt prob v_pon 1234 stabilize_steps 1 modify_create overlap 1 modify_create nuc yes                         react DimerOn all 10 0.900000 1.100000 mPreDimerOn mPostDimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react TrimerOn all 10 0.900000 1.100000 mPreTrimerOn mPostTrimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react OligomerOn all 10 0.900000 1.100000 mPreOligomerOn mPostOligomerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react OligomerOff all 10 0.900000 1.100000 mPreOligomerOff mPostOligomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOff.txt prob v_poff 1234 stabilize_steps 1                         react QuartomerOff all 10 0.900000 1.100000 mPreQuartomerOff mPostQuartomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_QuartomerOff.txt prob v_poff 1234 stabilize_steps 1                         react TrimerOff all 10 0.900000 1.100000 mPreTrimerOff mPostTrimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOff.txt prob v_poff 1234 stabilize_steps 1                         react DimerOff all 10 0.900000 1.100000 mPreDimerOff mPostDimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOff.txt prob v_poff 1234 stabilize_steps 1 				react diviact  					all  10  					0.100000 10  					mPreDiviAct mPostDiviAct  /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DivAct.txt 					prob v_pact 1234 				react divideact 					all 10   					0.000000 9999 					mPreDEact mPostDEact /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DEact.txt 					prob v_pdeact ${seed}
+fix freact all bond/react  stabilization yes AllAtoms 0.1  reset_mol_ids molmap lifetime hydrolysis 1234                 react Nucleation all 10 0.900000 1.100000 mPreNucleation mPostNucleation /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_Nucleation.txt prob v_pon 1234 stabilize_steps 1 modify_create overlap 1 modify_create nuc yes                         react DimerOn all 10 0.900000 1.100000 mPreDimerOn mPostDimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react TrimerOn all 10 0.900000 1.100000 mPreTrimerOn mPostTrimerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react OligomerOn all 10 0.900000 1.100000 mPreOligomerOn mPostOligomerOn /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOn.txt prob v_pon 1234 stabilize_steps 1 modify_create fit 1 modify_create overlap 1                         react OligomerOff all 10 0.900000 1.100000 mPreOligomerOff mPostOligomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_OligomerOff.txt prob v_poff 1234 stabilize_steps 1                         react QuartomerOff all 10 0.900000 1.100000 mPreQuartomerOff mPostQuartomerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_QuartomerOff.txt prob v_poff 1234 stabilize_steps 1                         react TrimerOff all 10 0.900000 1.100000 mPreTrimerOff mPostTrimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_TrimerOff.txt prob v_poff 1234 stabilize_steps 1                         react DimerOff all 10 0.900000 1.100000 mPreDimerOff mPostDimerOff /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DimerOff.txt prob v_poff 1234 stabilize_steps 1 				react diviact  					all  10  					0.100000 10  					mPreDiviAct mPostDiviAct  /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DivAct.txt 					prob v_pact 1234 				react divideact 					all 10   					0.000000 9999 					mPreDEact mPostDEact /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/Reactions_explicit/molid/map_DEact.txt 					prob v_pdeact 1234
+WARNING: Fix bond/react ('reset_mol_ids molmap' option): Pre- and post-reaction templates must both contain a 'Molecules' section for molecule IDs to be updated for a given reaction (src/REACTION/fix_bond_react.cpp:566)
+dynamic group bond_react_MASTER_group defined
+dynamic group AllAtoms_REACT defined
+
+variable            vMaskHeadType atom "type==3"
+group               HeadMons dynamic all var vMaskHeadType every 1
+dynamic group HeadMons defined
+variable            vMaskTailType atom "type==2"
+group               TailMons dynamic all var vMaskTailType every 1
+dynamic group TailMons defined
+variable            vMaskHTType atom "type==2 || type==3"
+group               HTMons dynamic all var vMaskHTType every 1
+dynamic group HTMons defined
+variable            vMaskAlive atom "type==1 || type==2 || type==3"
+group               alive dynamic all var vMaskAlive every 1
+dynamic group alive defined
+variable vStep atom "step"
+fix      fStep all store/state 1 v_vStep
+
+
+fix                 fLang all langevin 1.0 1.0 1.0 ${seed}
+fix                 fLang all langevin 1.0 1.0 1.0 1234
+
+## INTEGRATE ONLY NONGHOST PARTICLES
+fix fNVE AllAtoms_REACT nve
+variable vMaskGrid atom "type==7"
+group grid dynamic all var vMaskGrid every 100
+dynamic group grid defined
+variable vMaskReactNongrid atom "(1-gmask(grid)) * gmask(AllAtoms_REACT)"
+group integr dynamic all var vMaskReactNongrid every 1
+dynamic group integr defined
+fix fNVE integr nve
+WARNING: Replacing a fix, but new group != old group (src/modify.cpp:884)
+
+#fix fNVE AllAtoms_REACT nve
+
+## freeze grid particles
+group grid type 7
+dynamic group grid defined
+fix freeze grid setforce 0 0 0
+velocity grid set 0 0 0
+
+
+
+## DONT OUTPUT GRID PARTICLES
+variable vnongrid atom "(1-gmask(grid))"
+group nongrid dynamic all var vnongrid every ${dump_time}
+group nongrid dynamic all var vnongrid every 10000
+dynamic group nongrid defined
+dump 1 nongrid custom ${dump_time} output.xyz v_vStep id mol type x y
+dump 1 nongrid custom 10000 output.xyz v_vStep id mol type x y
+dump_modify 1 format line "%6.f %d %d %d %.1f %.1f" #  %.1f %.1f
+
+
+
+
+thermo              ${dump_time}
+thermo              10000
+compute_modify      thermo_temp dynamic/dof yes
+thermo_style        custom step v_realtime temp pe ke etotal epair ebond eangle press vol density atoms
+
+
+## bonds output
+#compute             cBonds all property/local batom1 batom2 btype
+#compute             cBondDxys all bond/local engpot force dist
+#dump 2 all local ${dump_time} bonds.dump c_cBonds[*] c_cBondDxys[*]
+#dump_modify 2 format line "%.0f %.0f %.0f %.3f %.3f %.3f"
+
+fix                 twodim all enforce2d
+
+variable            restartsteps equal v_run_steps/20
+restart             ${restartsteps} restart
+restart             2500 restart
+
+timestep            ${tstep}
+timestep            0.001
+run                 ${run_steps}
+run                 50000
+
+CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE
+
+Your simulation uses code contributions which should be cited:
+
+- fix bond/react: reacter.org doi:10.1016/j.polymer.2017.09.038, doi:10.1021/acs.macromol.0c02012, doi:10.1016/j.cpc.2024.109287
+
+@Article{Gissinger17,
+ author = {J. R. Gissinger and B. D. Jensen and K. E. Wise},
+ title = {Modeling Chemical Reactions in Classical Molecular Dynamics Simulations},
+ journal = {Polymer},
+ year =    2017,
+ volume =  128,
+ pages =   {211--217}
+}
+
+@Article{Gissinger20,
+ author = {J. R. Gissinger, B. D. Jensen, K. E. Wise},
+ title = {{REACTER}: A Heuristic Method for Reactive Molecular Dynamics},
+ journal = {Macromolecules},
+ year =    2020,
+ volume =  53,
+ number =  22,
+ pages =   {9953--9961}
+}
+
+@Article{Gissinger24,
+ author = {J. R. Gissinger, B. D. Jensen, K. E. Wise},
+ title = {Molecular Modeling of Reactive Systems with REACTER},
+ journal = {Computer Physics Communications},
+ year =    2024,
+ volume =  304,
+ number =  109287
+}
+
+CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE-CITE
+
+Generated 0 of 45 mixed pair_coeff terms from geometric mixing rule
+Neighbor list info ...
+  update: every = 1 steps, delay = 0 steps, check = yes
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 2.3
+  ghost atom cutoff = 2.3
+  binsize = 1.15, bins = 209 209 8
+  4 neighbor lists, perpetual/occasional/extra = 3 1 0
+  (1) pair zero, perpetual
+      attributes: half, newton on, cut 2.3
+      pair build: half/bin/newton
+      stencil: half/bin/2d
+      bin: standard
+  (2) pair cosine/squared, perpetual, trim from (1)
+      attributes: half, newton on, cut 1.4000000000000001
+      pair build: trim
+      stencil: none
+      bin: none
+  (3) pair soft, perpetual, skip from (1)
+      attributes: half, newton on
+      pair build: skip
+      stencil: none
+      bin: none
+  (4) fix bond/react, occasional, copy from (1)
+      attributes: half, newton on
+      pair build: copy
+      stencil: none
+      bin: none
+Per MPI rank memory allocation (min/avg/max) = 25.59 | 25.59 | 25.59 Mbytes
+   Step       v_realtime        Temp          PotEng         KinEng         TotEng         E_pair         E_bond        E_angle         Press          Volume        Density        Atoms   
+         0   0              0              0              0              0              0              0              0              0              57600          0.032465278         1870 
+     10000   10             0.60303006    -1.3981697      0.60281833    -0.79535134    -1.5445109      0.074563498    0.071777771    0.0066926568   57600          0.049444444         2848 
+     20000   20             0.70091547    -2.3172609      0.70069907    -1.6165618     -2.5615874      0.11050626     0.13382027     0.023598404    57600          0.056232639         3239 
+     30000   30             0.72731761    -2.4865725      0.72710599    -1.7594665     -2.7786661      0.12064298     0.17145059     0.0076146335   57600          0.059670139         3437 
+     40000   40             0.69856827    -2.554957       0.69836537    -1.8565916     -2.819669       0.11737724     0.14733479     0.0018650434   57600          0.059774306         3443 
+     50000   50             0.74745204    -2.734342       0.74724078    -1.9871012     -3.0325893      0.13203172     0.16621557     0.063309223    57600          0.061423611         3538 
+Loop time of 57.4691 on 10 procs for 50000 steps with 3538 atoms
+
+Performance: 75170.816 tau/day, 870.033 timesteps/s, 3.078 Matom-step/s
+701.5% CPU use with 1 MPI tasks x 10 OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 3.0317     | 3.0317     | 3.0317     |   0.0 |  5.28
+Bond    | 3.4478     | 3.4478     | 3.4478     |   0.0 |  6.00
+Neigh   | 4.0359     | 4.0359     | 4.0359     |   0.0 |  7.02
+Comm    | 0.41191    | 0.41191    | 0.41191    |   0.0 |  0.72
+Output  | 0.12307    | 0.12307    | 0.12307    |   0.0 |  0.21
+Modify  | 45.93      | 45.93      | 45.93      |   0.0 | 79.92
+Other   |            | 0.4884     |            |       |  0.85
+
+Nlocal:           3538 ave        3538 max        3538 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:            118 ave         118 max         118 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:           5000 ave        5000 max        5000 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 5000
+Ave neighs/atom = 1.4132278
+Ave special neighs/atom = 1.6664782
+Neighbor list builds = 10311
+Dangerous builds = 0
+Total wall time: 0:00:57
