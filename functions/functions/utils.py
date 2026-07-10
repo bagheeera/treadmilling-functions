@@ -697,7 +697,7 @@ def submit_papermill(
     Parameters
     ----------
     job_name : str
-        Name of the SLURM job.
+        Name of this SLURM job.
     ipynb_file : str
         Path to input notebook.
     storeoutput : str
