@@ -564,10 +564,8 @@ def make_arrow_orientation_bidirectional(
     return arrow_orientation
 
 
-
-
-
 # from fct.cmplx_scatter import scatter_fct
+
 def render_movie_with_hist(
     df,
     tag,
@@ -594,9 +592,11 @@ def render_movie_with_hist(
     inactive_alpha=0.9,
     trace_fade_time=None,     # seconds of visible trace)
     footer=None,
+    axislabels=True,
 ):
     """
     Render an animation of particle positions with optional histogram and trajectory tracing.
+  
 
     Parameters
     ----------
@@ -631,6 +631,7 @@ def render_movie_with_hist(
     inactive_color, inactive_alpha : style
         Color and alpha for particles not currently of a traced type.
     """
+
     import numpy as np
     import pandas as pd
     import matplotlib.pyplot as plt
@@ -672,49 +673,103 @@ def render_movie_with_hist(
         ]
 
     plt.rcParams["figure.dpi"] = dpi
+
+    df = df.copy().sort_values("time")
+
     if histogram_range is None:
         histogram_range = ylim
 
-    T_tot = df["time"].values[-1]
+    if trace_types is not None and not isinstance(trace_types, (list, tuple, set)):
+        trace_types = [trace_types]
+
+    times = np.sort(df["time"].unique())
+    T_min = times[0]
+    T_max = times[-1]
+
     SCALE = 5.0
 
-    # Pick IDs to trace if trace_types requested
+    # ---------------- Pick IDs to trace ----------------
     if trace_types:
         subset = df[df["type"].isin(trace_types)]
         unique_ids = subset["id"].unique()
+
         if len(unique_ids) > N_show:
             rng = np.random.default_rng(42)
             show_ids = rng.choice(unique_ids, size=N_show, replace=False)
         else:
             show_ids = unique_ids
+
         print(f"Selected {len(show_ids)} IDs for tracing: {show_ids}")
-        df_trace = df[df["id"].isin(show_ids)]
+        df_trace = df[df["id"].isin(show_ids)].copy()
     else:
         show_ids = []
         df_trace = pd.DataFrame(columns=df.columns)
 
-    # Build quick type→style lookup
-    base_color_map, trace_color_map = {}, {}
-    marker_map, size_map, zorder_map = {}, {}, {}
-    label_map, alpha_map = {}, {}
-    lw_map, trace_alpha_map, trace_zorder_map = {}, {}, {}
+    # ---------------- Build quick type→style lookup ----------------
+    base_color_map = {}
+    trace_color_map = {}
+
+    marker_map = {}
+    size_map = {}
+    zorder_map = {}
+    label_map = {}
+    alpha_map = {}
+
+    lw_map = {}
+    trace_alpha_map = {}
+    trace_zorder_map = {}
+
+    # Single-point trace styling maps
+    trace_marker_map = {}
+    trace_size_map = {}
+    trace_linewidth_map = {}
+    trace_facecolor_map = {}
+
     for name, cfg in particle_config.items():
         for ttp in cfg.get("types", []):
             base_color_map[ttp] = cfg.get("color", "#397387ff")
             trace_color_map[ttp] = cfg.get("trace_color", base_color_map[ttp])
+
             marker_map[ttp] = cfg.get("marker", "o")
             size_map[ttp] = cfg.get("s", 10)
             zorder_map[ttp] = cfg.get("zorder", 1)
             alpha_map[ttp] = cfg.get("alpha", 1.0)
             label_map[ttp] = cfg.get("label", str(ttp))
-            lw_map[ttp] = cfg.get("lw", 2.5)
-            trace_alpha_map[ttp] = cfg.get("trace_alpha", .4)
-            trace_zorder_map[ttp] = cfg.get("trace_zorder", zorder_map[ttp] - 0.5)
 
-    # --- Figure layout ---
+            lw_map[ttp] = cfg.get("lw", 2.5)
+            trace_alpha_map[ttp] = cfg.get("trace_alpha", 0.4)
+            trace_zorder_map[ttp] = cfg.get(
+                "trace_zorder",
+                zorder_map[ttp] - 0.5,
+            )
+
+            # Style for one-point traces
+            trace_marker_map[ttp] = cfg.get(
+                "trace_marker",
+                cfg.get("marker", "o"),
+            )
+            trace_size_map[ttp] = cfg.get(
+                "trace_s",
+                cfg.get("s", 10) * 2.5,
+            )
+            trace_linewidth_map[ttp] = cfg.get(
+                "trace_linewidth",
+                cfg.get("lw", 2.0),
+            )
+            trace_facecolor_map[ttp] = cfg.get(
+                "trace_facecolor",
+                "none",
+            )
+
+    # ---------------- Figure layout ----------------
     if with_histogram:
         fig = plt.figure(figsize=figsize)
-        gs = gridspec.GridSpec(1, 2, width_ratios=width_ratios, wspace=wspace)
+        gs = gridspec.GridSpec(
+            1,
+            2,
+            width_ratios=width_ratios,
+            wspace=wspace,
+        )
         ax_scatter = fig.add_subplot(gs[0, 0])
         ax_hist = fig.add_subplot(gs[0, 1], sharey=ax_scatter)
     else:
@@ -723,11 +778,22 @@ def render_movie_with_hist(
 
     ax_scatter.set_xlim(xlim)
     ax_scatter.set_ylim(ylim)
-    ax_scatter.set_xlabel("Cell circumference (nm)")
-    ax_scatter.set_ylabel("Long cell axis (nm)")
+
+    if axislabels:
+        ax_scatter.set_xlabel("Cell circumference (nm)")
+        ax_scatter.set_ylabel("Long cell axis (nm)")
+
+    ax_scatter.set_aspect("equal")
 
     if footer is not None:
-        fig.text(0.01, 0.01, footer, ha='center', fontsize=3, alpha=0.4)
+        fig.text(
+            0.01,
+            0.01,
+            footer,
+            ha="center",
+            fontsize=3,
+            alpha=0.4,
+        )
 
     def clear_ax_artists(ax):
         for coll in list(ax.collections):
@@ -739,15 +805,20 @@ def render_movie_with_hist(
         for txt in list(ax.texts):
             txt.remove()
 
-    # --- Animation frame generator ---
+    # ---------------- Animation frame generator ----------------
     def make_frame(t_video):
-        t_data = T_tot * t_video / duration
-        closest_time = df["time"].values[np.abs(df["time"].values - t_data).argmin()]
+        if duration == 0:
+            t_data = T_min
+        else:
+            t_data = T_min + (T_max - T_min) * t_video / duration
+
+        closest_time = times[np.abs(times - t_data).argmin()]
+
         clear_ax_artists(ax_scatter)
+
         if with_histogram and ax_hist is not None:
             clear_ax_artists(ax_hist)
 
-        # Subset of this time
         frame_df = df[df["time"] == closest_time]
 
         # Only display types defined and marked "plot": True in particle_config
@@ -758,28 +829,32 @@ def render_movie_with_hist(
             if cfg.get("plot", True)
         ]
 
-        for ttype in sorted([t for t in frame_df["type"].unique() if t in visible_types]):
+        # ---------------- Plot current particles ----------------
+        for ttype in sorted(
+            [t for t in frame_df["type"].unique() if t in visible_types]
+        ):
             sub = frame_df[frame_df["type"] == ttype]
+
             if sub.empty:
                 continue
-            # If using trace_types, mark "inactive" color for traced IDs of non-active types
-            is_traced_type = ttype in trace_types if trace_types else False
+
             ax_scatter.scatter(
-                SCALE * sub["x"], SCALE * sub["y"],
+                SCALE * sub["x"],
+                SCALE * sub["y"],
                 c=base_color_map.get(ttype, "#397387ff"),
                 s=size_map.get(ttype, 10),
                 marker=marker_map.get(ttype, "o"),
                 zorder=zorder_map.get(ttype, 1),
                 alpha=alpha_map.get(ttype, 1.0),
                 edgecolors="none",
-                label=label_map.get(ttype, str(ttype))
+                label=label_map.get(ttype, str(ttype)),
             )
 
-        # ---- Draw traces if requested ----
+        # ---------------- Draw traces if requested ----------------
         if trace_types and len(show_ids) > 0:
-            MAX_DIST = 25.0
+            MAX_DIST = 2 * 25.0
+
             for pid in show_ids:
-                # select data up to current frame
                 pdata = df_trace[
                     (df_trace["id"] == pid)
                     & (df_trace["time"] <= closest_time)
@@ -788,38 +863,79 @@ def render_movie_with_hist(
 
                 # Apply trace fade lifetime
                 if trace_fade_time is not None:
-                    pdata = pdata[pdata["time"] >= closest_time - trace_fade_time]
+                    pdata = pdata[
+                        pdata["time"] >= closest_time - trace_fade_time
+                    ]
 
                 if pdata.empty:
                     continue
+
                 pdata = pdata.sort_values("time")
+
                 px = SCALE * pdata["x"].values
                 py = SCALE * pdata["y"].values
 
-                diffs = np.sqrt(np.diff(px)**2 + np.diff(py)**2)
-                break_idx = np.where(diffs > MAX_DIST)[0]
-                segs, start = [], 0
-                for b in break_idx:
-                    segs.append(slice(start, b + 1))
-                    start = b + 1
-                segs.append(slice(start, len(px)))
-
                 ptype = pdata["type"].iloc[0]
+
                 color = trace_color_map.get(ptype, "#397387ff")
                 lw = lw_map.get(ptype, 2.5)
                 talpha = trace_alpha_map.get(ptype, 1.0)
                 tz = trace_zorder_map.get(ptype, 1.5)
 
+                # Single-point trace styling from particle_config
+                tmarker = trace_marker_map.get(
+                    ptype,
+                    marker_map.get(ptype, "o"),
+                )
+                tsize = trace_size_map.get(
+                    ptype,
+                    size_map.get(ptype, 10) * 2.5,
+                )
+                tlw = trace_linewidth_map.get(ptype, lw)
+                tface = trace_facecolor_map.get(ptype, "none")
+
+                # ---- Single-point trace ----
+                if len(px) == 1:
+                    ax_scatter.scatter(
+                        px,
+                        py,
+                        s=tsize,
+                        marker=tmarker,
+                        facecolors=tface,
+                        edgecolors=color,
+                        linewidths=tlw,
+                        alpha=talpha,
+                        zorder=tz,
+                    )
+                    continue
+
+                # ---- Multi-point trace ----
+                diffs = np.sqrt(np.diff(px) ** 2 + np.diff(py) ** 2)
+                break_idx = np.where(diffs > MAX_DIST)[0]
+
+                segs = []
+                start = 0
+
+                for b in break_idx:
+                    segs.append(slice(start, b + 1))
+                    start = b + 1
+
+                segs.append(slice(start, len(px)))
+
                 for seg in segs:
                     if seg.stop - seg.start < 2:
                         continue
+
                     ax_scatter.plot(
-                        px[seg], py[seg],
-                        lw=lw, color=color,
-                        alpha=talpha, zorder=tz,
+                        px[seg],
+                        py[seg],
+                        lw=lw,
+                        color=color,
+                        alpha=talpha,
+                        zorder=tz,
                     )
 
-        # ---- Optional histogram side plot ----
+        # ---------------- Optional histogram side plot ----------------
         if with_histogram and ax_hist is not None:
             scatter_fct(
                 df,
@@ -836,32 +952,55 @@ def render_movie_with_hist(
                 histogram_range=histogram_range,
                 xlim=xlim,
             )
+
             ax_hist.set_xlim(0, hist_xlim)
             ax_hist.set_xticklabels([])
             ax_hist.set_yticks([])
             ax_hist.set_xlabel("Density")
-            ax_hist.set_aspect('auto')
+            ax_hist.set_aspect("auto")
 
-        # ---- Time text & legend ----
+        # ---------------- Time text and legend ----------------
         if display_time:
             ax_scatter.text(
-                0.8, 0.9, f"t = {closest_time:.0f} s",
+                0.8,
+                0.9,
+                f"t = {closest_time:.0f} s",
                 transform=ax_scatter.transAxes,
-                ha="center", va="center",
-                bbox=dict(facecolor="white", alpha=0.8, edgecolor="white"),
+                ha="center",
+                va="center",
+                bbox=dict(
+                    facecolor="white",
+                    alpha=0.8,
+                    edgecolor="white",
+                ),
             )
+
         if display_legend:
             handles, labels = ax_scatter.get_legend_handles_labels()
             by_label = dict(zip(labels, handles))
-            ax_scatter.legend(by_label.values(), by_label.keys(), frameon=True,
-            loc="upper left")
+
+            ax_scatter.legend(
+                by_label.values(),
+                by_label.keys(),
+                frameon=True,
+                loc="upper left",
+            )
 
         fig.canvas.draw_idle()
         return mplfig_to_npimage(fig)
 
-    # --- Render video ---
+    # ---------------- Render video ----------------
     animation = VideoClip(make_frame, duration=duration)
-    animation.write_videofile(f"{tag}.mp4", fps=fps, codec="libx264", audio=False)
+    animation.write_videofile(
+        f"{tag}.mp4",
+        fps=fps,
+        codec="libx264",
+        audio=False,
+    )
+
+    plt.close(fig)
+
+
 
 
 # tested in /nfs/scistore26/saricgrp/fhorvath/0__treadmilling/D__hydr/0__ring/M__cmplx_cnstrct_intermediate/A_staticring/B__arrest/notebooks/processive_traces_movie.ipynb
@@ -870,7 +1009,7 @@ def render_movie_with_trace(
     tag,
     trace_types,
     particle_config=None,
-    N_show=10,
+    N_show=None,
     duration=10,
     fps=30,
     dpi=150,
@@ -881,6 +1020,7 @@ def render_movie_with_trace(
     figsize=(8, 6),
     inactive_color="#f478aaff",
     inactive_alpha=0.9,
+    trace_fade_time=None,   # (seconds of visible trace)
 ):
     import numpy as np
     import matplotlib.pyplot as plt
@@ -914,7 +1054,10 @@ def render_movie_with_trace(
     # ---------------- Randomly select trace‑type IDs ----------------
     subset = df[df["type"].isin(trace_types)]
     unique_ids = subset["id"].unique()
-    if len(unique_ids) > N_show:
+    if N_show is None:
+        print("using unique ids")
+        show_ids = unique_ids
+    elif len(unique_ids) > N_show:
         rng = np.random.default_rng(seed=42)
         show_ids = rng.choice(unique_ids, size=N_show, replace=False)
     else:
@@ -953,10 +1096,12 @@ def render_movie_with_trace(
     ax.set_ylim(ylim)
     ax.set_xlabel("Cell circumference (nm)")
     ax.set_ylabel("Long cell axis (nm)")
-
+    ax.set_aspect("equal")
     t_min = df_show["time"].values[0]
     t_max = df_show["time"].values[-1]
     T_range = t_max - t_min
+    if trace_fade_time is None:
+            trace_fade_time = 0   # infinite
 
     def clear_ax_artists(ax):
         for c in list(ax.collections): c.remove()
@@ -1008,6 +1153,7 @@ def render_movie_with_trace(
         # ---- Traces (zorder between background and synthase) ----
         MAX_DIST = 25.0
         SCALE = 5.0
+
         for pid in show_ids:
             pdata = df_trace[
                 (df_trace["id"] == pid)
@@ -1016,31 +1162,29 @@ def render_movie_with_trace(
             ]
             if pdata.empty:
                 continue
+
             pdata = pdata.sort_values("time")
             px = SCALE * pdata["x"].values
             py = SCALE * pdata["y"].values
-            diffs = np.sqrt(np.diff(px) ** 2 + np.diff(py) ** 2)
-            break_idx = np.where(diffs > MAX_DIST)[0]
-            segs, start = [], 0
-            for b in break_idx:
-                segs.append(slice(start, b + 1))
-                start = b + 1
-            segs.append(slice(start, len(px)))
+            pt = pdata["time"].values
 
-            ptype = pdata["type"].iloc[0]
-            color  = trace_color_map.get(ptype, "#397387ff")
-            lw     = lw_map.get(ptype, 2.5)
-            label  = label_map.get(ptype, f"type {ptype}")
-            talpha = trace_alpha_map.get(ptype, 1.0)
-            tz     = trace_zorder_map.get(ptype, 1.5)
+            # time distance from the current frame
+            age = closest_time - pt
 
-            for seg in segs:
-                if seg.stop - seg.start < 2:
-                    continue
+            ptype   = pdata["type"].iloc[0]
+            color   = trace_color_map.get(ptype, "#397387ff")
+            lw      = lw_map.get(ptype, 2.5)
+            tz      = trace_zorder_map.get(ptype, 1.5)
+
+            # --- draw the line piecewise with fading alpha ---
+            for i in range(len(px) - 1):
+                seg_age = (age[i] + age[i + 1]) / 2.0
+                # normalize: 0 (new) → 1 (old)
+                fade_frac = np.clip(seg_age / trace_fade_time, 0, 1) if trace_fade_time else 0
+                tail_alpha = trace_alpha_map.get(ptype, 1.0) * (1.0 - fade_frac)
                 ax.plot(
-                    px[seg], py[seg],
-                    lw=lw, color=color, alpha=talpha,
-                    label=label, zorder=tz,
+                    px[i:i+2], py[i:i+2],
+                    lw=lw, color=color, alpha=tail_alpha, zorder=tz,
                 )
 
         if display_time:
