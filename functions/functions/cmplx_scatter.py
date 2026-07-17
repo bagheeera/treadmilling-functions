@@ -892,7 +892,7 @@ def render_movie_with_hist(
                     size_map.get(ptype, 10) * 2.5,
                 )
                 tlw = trace_linewidth_map.get(ptype, lw)
-                tface = trace_facecolor_map.get(ptype, "none")
+                tface = trace_facecolor_map.get(ptype, "k")
 
                 # ---- Single-point trace ----
                 if len(px) == 1:
