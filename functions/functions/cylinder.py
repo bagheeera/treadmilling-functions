@@ -26,6 +26,7 @@ def histogram_mesh(df, fulldf, rundir,
                    z_range_tuple=(-150, 150),
                    blur_nm=(20.0, 5.0),
                    per_interval=False,
+                   verbose=False,
                 #    height_per_count_nm=None # if None = strand_width_nm (4.5 nm default)):
                    ):  
     """
@@ -80,7 +81,7 @@ def histogram_mesh(df, fulldf, rundir,
     with open(f"{rundir}/parameters.json") as f:
         d = json.load(f)
 
-    dT               = d["dT"] * d["tstep"]
+    dT               = d["dT"] #/ d["tstep"]
     NM_PER_SU        = 5.0
     circumference_su = 2 * d["Lx"]               # full box in sim units
     R_nm             = NM_PER_SU * circumference_su / (2 * np.pi)  # run-start radius in nm
@@ -120,8 +121,11 @@ def histogram_mesh(df, fulldf, rundir,
     H_total     = np.zeros((n_theta, n_z))
     r_snapshots = []
     t_snapshots = []
-
-    for t0, t1 in zip(t_bins[:-1], t_bins[1:]):
+    if verbose:
+        print("iterating over", len(t_bins), "time bins")
+    for t0, t1 in tqdm(zip(t_bins[:-1], t_bins[1:]), total=len(t_bins[:-1])):
+        if verbose:
+            print(t0)
         df_i     = df[(df["time"] >= t0) & (df["time"] < t1)]
         full_i   = fulldf[(fulldf["time"] >= t0) & (fulldf["time"] < t1)]
         if len(df_i) == 0 or len(full_i) == 0:
