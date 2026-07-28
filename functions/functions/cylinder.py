@@ -326,11 +326,26 @@ import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
-import numpy as np
-from mpl_toolkits.axes_grid1.inset_locator import inset_axes
-
-import numpy as np
-from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+whitley_constriction = np.array([[   0.        , 1155.99320666],
+                                [   1.25334741, 1154.63087252],
+                                [   2.50669482, 1153.26853838],
+                                [   3.76004223, 1151.90620424],
+                                [   5.03617777, 1136.51802087],
+                                [   6.26673705, 1087.03770711],
+                                [   7.52008446, 1030.27003159],
+                                [   8.77343187,  973.25278245],
+                                [   9.96980894,  912.9032565 ],
+                                [  11.10921568,  851.81701928],
+                                [  12.19165208,  790.42666505],
+                                [  13.21711814,  727.6950768 ],
+                                [  14.18561386,  663.23333565],
+                                [  15.04016892,  601.95668127],
+                                [  15.78078329,  541.73531982],
+                                [  16.46442734,  481.05296651],
+                                [  17.09110104,  417.59571744],
+                                [  17.60383407,  359.935957  ],
+                                [  18.05959677,  298.35742176],
+                                [  18.34444845,  260.29979188]])
 
 def diam_plot(
     D,
@@ -351,6 +366,7 @@ def diam_plot(
     height="45%",
     legendtitle=None,
     coltharp_label=None,
+    whitley_label = "Whitley 2021, Fig4a",
     ncol=1,
     pgt=None,
     z_range_tuple=(-370, 370),
@@ -360,6 +376,7 @@ def diam_plot(
     vline_pos=None,
     verbose=False,
     plot_coltharp=True,
+    plot_whitley=False,
     legendloc="upper right",
     strandheight=3,
 ):
@@ -461,11 +478,14 @@ def diam_plot(
                 print("  Length mismatch! Skipping std plot.")
 
     # ---------------------------
-    # Plot model curve
+    # Plot exp curve
     # ---------------------------
     if plot_coltharp:
         ax.plot(t_model, val_model, color=coltharp_color, label=label or coltharp_label, ls="--")
-
+    if plot_whitley:
+        if normalize_diameter:
+             whitley_constriction[:,1] = whitley_constriction[:,1] / whitley_constriction[:,1][0]
+        ax.plot(*whitley_constriction.T, color=coltharp_color, label=label or whitley_label, ls="--")
     # ---------------------------
     # Optional vertical line(s)
     # ---------------------------
