@@ -1546,7 +1546,7 @@ def safe_write_df(df, rundir):
     # Atomically replace
     tmp.replace(final)  # atomic on POSIX systems
 
-from .analysis import read_xyz
+from functions.analysis import read_xyz
 def load(rundir, dontwritedf=False):
     import pyarrow.feather as feather
     import os
