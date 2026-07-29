@@ -854,86 +854,110 @@ def render_movie_with_hist(
         if trace_types and len(show_ids) > 0:
             MAX_DIST = 2 * 25.0
 
-            for pid in show_ids:
-                pdata = df_trace[
-                    (df_trace["id"] == pid)
-                    & (df_trace["time"] <= closest_time)
-                    & (df_trace["type"].isin(trace_types))
-                ].copy()
+            # All trace-eligible rows up to current time
+            trace_window = df_trace[
+                (df_trace["time"] <= closest_time)
+                & (df_trace["type"].isin(trace_types))
+            ].copy()
 
-                # Apply trace fade lifetime
-                if trace_fade_time is not None:
-                    pdata = pdata[
-                        pdata["time"] >= closest_time - trace_fade_time
-                    ]
+            # Apply trace fade lifetime
+            if trace_fade_time is not None:
+                trace_window = trace_window[
+                    trace_window["time"] >= closest_time - trace_fade_time
+                ]
 
-                if pdata.empty:
-                    continue
+            if not trace_window.empty:
+                # Count how many trace points each ID has in the current visible window
+                n_points_by_id = trace_window.groupby("id").size()
 
-                pdata = pdata.sort_values("time")
+                single_ids = n_points_by_id[n_points_by_id == 1].index
+                multi_ids = n_points_by_id[n_points_by_id >= 2].index
 
-                px = SCALE * pdata["x"].values
-                py = SCALE * pdata["y"].values
+                # -------------------------------------------------
+                # Plot all single-point traces at once, grouped by type
+                # -------------------------------------------------
+                single_df = trace_window[trace_window["id"].isin(single_ids)]
 
-                ptype = pdata["type"].iloc[0]
+                if not single_df.empty:
+                    for ptype, sub_single in single_df.groupby("type"):
+                        color = trace_color_map.get(ptype, "#397387ff")
+                        talpha = trace_alpha_map.get(ptype, 1.0)
+                        tz = trace_zorder_map.get(ptype, 1.5)
 
-                color = trace_color_map.get(ptype, "#397387ff")
-                lw = lw_map.get(ptype, 2.5)
-                talpha = trace_alpha_map.get(ptype, 1.0)
-                tz = trace_zorder_map.get(ptype, 1.5)
+                        tmarker = trace_marker_map.get(
+                            ptype,
+                            marker_map.get(ptype, "o"),
+                        )
+                        tsize = trace_size_map.get(
+                            ptype,
+                            size_map.get(ptype, 10) * 2.5,
+                        )
+                        tlw = trace_linewidth_map.get(
+                            ptype,
+                            lw_map.get(ptype, 2.0),
+                        )
+                        tface = trace_facecolor_map.get(ptype, "k")
 
-                # Single-point trace styling from particle_config
-                tmarker = trace_marker_map.get(
-                    ptype,
-                    marker_map.get(ptype, "o"),
-                )
-                tsize = trace_size_map.get(
-                    ptype,
-                    size_map.get(ptype, 10) * 2.5,
-                )
-                tlw = trace_linewidth_map.get(ptype, lw)
-                tface = trace_facecolor_map.get(ptype, "k")
+                        ax_scatter.scatter(
+                            SCALE * sub_single["x"].values,
+                            SCALE * sub_single["y"].values,
+                            s=tsize,
+                            marker=tmarker,
+                            facecolors=tface,
+                            edgecolors=color,
+                            linewidths=tlw,
+                            alpha=talpha,
+                            zorder=tz,
+                        )
 
-                # ---- Single-point trace ----
-                if len(px) == 1:
-                    ax_scatter.scatter(
-                        px,
-                        py,
-                        s=tsize,
-                        marker=tmarker,
-                        facecolors=tface,
-                        edgecolors=color,
-                        linewidths=tlw,
-                        alpha=talpha,
-                        zorder=tz,
-                    )
-                    continue
+                # -------------------------------------------------
+                # Draw multi-point traces by ID
+                # -------------------------------------------------
+                for pid in multi_ids:
+                    pdata = trace_window[trace_window["id"] == pid].copy()
 
-                # ---- Multi-point trace ----
-                diffs = np.sqrt(np.diff(px) ** 2 + np.diff(py) ** 2)
-                break_idx = np.where(diffs > MAX_DIST)[0]
-
-                segs = []
-                start = 0
-
-                for b in break_idx:
-                    segs.append(slice(start, b + 1))
-                    start = b + 1
-
-                segs.append(slice(start, len(px)))
-
-                for seg in segs:
-                    if seg.stop - seg.start < 2:
+                    if pdata.empty:
                         continue
 
-                    ax_scatter.plot(
-                        px[seg],
-                        py[seg],
-                        lw=lw,
-                        color=color,
-                        alpha=talpha,
-                        zorder=tz,
-                    )
+                    pdata = pdata.sort_values("time")
+
+                    px = SCALE * pdata["x"].values
+                    py = SCALE * pdata["y"].values
+
+                    if len(px) < 2:
+                        continue
+
+                    ptype = pdata["type"].iloc[0]
+
+                    color = trace_color_map.get(ptype, "#397387ff")
+                    lw = lw_map.get(ptype, 2.5)
+                    talpha = trace_alpha_map.get(ptype, 1.0)
+                    tz = trace_zorder_map.get(ptype, 1.5)
+
+                    diffs = np.sqrt(np.diff(px) ** 2 + np.diff(py) ** 2)
+                    break_idx = np.where(diffs > MAX_DIST)[0]
+
+                    segs = []
+                    start = 0
+
+                    for b in break_idx:
+                        segs.append(slice(start, b + 1))
+                        start = b + 1
+
+                    segs.append(slice(start, len(px)))
+
+                    for seg in segs:
+                        if seg.stop - seg.start < 2:
+                            continue
+
+                        ax_scatter.plot(
+                            px[seg],
+                            py[seg],
+                            lw=lw,
+                            color=color,
+                            alpha=talpha,
+                            zorder=tz,
+                        )
 
         # ---------------- Optional histogram side plot ----------------
         if with_histogram and ax_hist is not None:

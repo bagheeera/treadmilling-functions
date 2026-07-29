@@ -560,7 +560,7 @@ def submit_runs(
     analyzefilaments=True,
     load_mamba_env=True,
     env_name="filaments",
-    env_runner="auto",
+    env_runner="/nfs/scistore26/saricgrp/fhorvath/miniforge3/bin/mamba",
     env_prefix=None,
     setup_commands="",
 ):
@@ -938,7 +938,7 @@ def submit_papermill(
     time_hours=30,
     envname="filaments",
     extra_args="",
-    env_runner="auto",
+    env_runner="/nfs/scistore26/saricgrp/fhorvath/miniforge3/bin/mamba",
     env_prefix=None,
     setup_commands="",
 ):

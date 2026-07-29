@@ -347,6 +347,44 @@ whitley_constriction = np.array([[   0.        , 1155.99320666],
                                 [  18.05959677,  298.35742176],
                                 [  18.34444845,  260.29979188]])
 
+def plot_septum_height(
+    ax_ins,
+    D,
+    key,
+    pgt,
+    z_range_tuple,
+    strandheight,
+    label=None,
+    md_line_color=None,
+    axislabels=True,
+    xlim=(-120, 120),
+):
+    """
+    Plot septum height profile into an inset axis.
+    """
+
+    z_min, z_max = z_range_tuple
+
+    strand_width_su = getattr(pgt, "strand_thickness_width", 4.5) / 5.0
+    z_edges = np.arange(z_min, z_max + strand_width_su, strand_width_su)
+    z_centers = (z_edges[:-1] + z_edges[1:]) / 2
+    z_nm = z_centers * 5.0
+
+    H_total_mean = D[key]["H_total"].mean(axis=0) * strandheight  # nm
+
+    ax_ins.plot(
+        z_nm,
+        H_total_mean,
+        color=md_line_color,
+        label=label,
+    )
+
+    ax_ins.set_xlim(*xlim)
+
+    if axislabels:
+        ax_ins.set_xlabel("Long cell axis (nm)", fontsize=7)
+        ax_ins.set_ylabel("Septum height (nm)", fontsize=7)
+
 def diam_plot(
     D,
     key,
@@ -514,18 +552,29 @@ def diam_plot(
     # Optional inset
     # ---------------------------
     if inset and "H_total" in D[key]:
+
         if not hasattr(ax, "my_inset"):
-            ax.my_inset = inset_axes(ax, width=width, height=height,
-                                     loc="lower left", borderpad=4)
+            ax.my_inset = inset_axes(
+                ax,
+                width=width,
+                height=height,
+                loc="lower left",
+                borderpad=4,
+            )
+
         ax_ins = ax.my_inset
-        z_min, z_max = z_range_tuple
-        strand_width_su = getattr(pgt, "strand_thickness_width", 4.5) / 5.0
-        z_edges = np.arange(z_min, z_max + strand_width_su, strand_width_su)
-        z_centers = (z_edges[:-1] + z_edges[1:]) / 2
-        z_nm = z_centers * 5.0
-        ax_ins.plot(z_nm, 
-                    D[key]["H_total"].mean(axis=0) * strandheight, ## has to be set in nm
-                    label=overlay)
+
+        plot_septum_height(
+            ax_ins=ax_ins,
+            D=D,
+            key=key,
+            pgt=pgt,
+            z_range_tuple=z_range_tuple,
+            strandheight=strandheight,
+            md_line_color=md_line_color,
+            axislabels=axislabels,
+            xlim=(-120, 120),
+        )
         #ax_ins.set_xlim(230-60, 230+60)
         ax_ins.set_xlim(-120,120)
         if axislabels:

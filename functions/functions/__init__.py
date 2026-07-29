@@ -5,7 +5,7 @@ from . import utils, plot, analysis, effective_rates, \
               load_data, sys_setup, kymo, xyz_reader, \
               sPGdeposition, midcell_transport, directionality, \
               box, constriction,  cylinder, \
-              cmplx_scatter # import all your modules here
+              cmplx_scatter, simconfig # import all your modules here
  #spt, huet_analysis
 
 # Optional: selectively import functions you want top-level

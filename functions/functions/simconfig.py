@@ -113,4 +113,41 @@ base = {
 import subprocess
 git_hash = subprocess.check_output(["git", "rev-parse", "HEAD"]).strip().decode()
 base["git_hash"] = git_hash
-    
+
+
+
+fcurv_cmd = """variable            vMaskHeadType atom "type==3"
+group               HeadMons dynamic all var vMaskHeadType every 1
+variable            vMaskTailType atom "type==2"
+group               TailMons dynamic all var vMaskTailType every 1
+variable            vMaskHTType atom "type==2 || type==3"
+group               HTMons dynamic all var vMaskHTType every 1
+variable            vMaskAlive atom "type==1 || type==2 || type==3"
+group               alive dynamic all var vMaskAlive every 1
+variable vStep atom "step"
+fix      fStep all store/state 1 v_vStep
+
+
+compute             cFrag all fragment/atom single no
+compute             cMol all chunk/atom c_cFrag
+compute             cCMH HeadMons com/chunk cMol
+compute             cCMT TailMons com/chunk cMol
+compute             cFilH all chunk/spread/atom cMol c_cCMH[*]
+compute             cFilT all chunk/spread/atom cMol c_cCMT[*]
+variable            vdxHT atom c_cFilH[1]-c_cFilT[1]
+variable            vdyHT atom c_cFilH[2]-c_cFilT[2]
+variable            condghosts atom "type == 4"
+variable            vRHT atom sqrt(v_vdxHT*v_vdxHT+v_vdyHT*v_vdyHT)+v_condghosts
+variable            vcosHT atom v_vdxHT/v_vRHT
+variable            vsinHT atom v_vdyHT/v_vRHT
+variable            conddx0 atom "v_vdxHT == 0"
+variable            dxAbs atom abs(v_vdxHT)+v_conddx0
+variable            dxSign atom v_vdxHT/v_dxAbs
+
+variable            fxField atom v_fCurv*(1.0-v_vcosHT)*v_vsinHT*v_vsinHT*v_dxSign
+variable            fyField atom v_fCurv*(1.0-v_vcosHT)*v_vsinHT*-1.0*v_vcosHT*v_dxSign
+variable            mfxField atom -1.0*v_fxField
+variable            mfyField atom -1.0*v_fyField
+
+fix                 fcurvH HeadMons addforce v_fxField v_fyField 0
+fix                 fcurvT TailMons addforce v_mfxField v_mfyField 0"""

@@ -534,7 +534,9 @@ def calc_updated_circ_symmetric(lmp, tracker, df, fulldf, N_angular_bins=200):
     peak : float
         Peak of profile (drives displacement).
     """
+    print("calling calc_inward_deformations")
     inwrd, inwrd_dT    = _base_step(df, fulldf, N_angular_bins)
+    print("updating tracker")
     tracker.update(inwrd_dT)
     r, profile, peak   = tracker.apply_symmetric()
     circumference_updated = 2 * np.pi * r
