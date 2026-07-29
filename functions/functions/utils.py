@@ -1144,21 +1144,168 @@ echo "Environment args: ${{ENV_ARGS[*]}}"
 
 
 
-def submit_python(job_name, py_file, rundirs_file, ram_gb=5, ncores=1, time_hours=30, envname="filaments", extra_args=None):
+import os
+import json
+import shlex
+import subprocess
+import textwrap
+import re
+
+
+def submit_python(
+    job_name,
+    py_file,
+    rundirs_file,
+    ram_gb=5,
+    ncores=1,
+    time_hours=30,
+    envname="filaments",
+    extra_args=None,
+    env_runner="/nfs/scistore26/saricgrp/fhorvath/miniforge3/bin/mamba",
+    env_prefix=None,
+    setup_commands="",
+    dontsubmit=False,
+):
     """
-    Generates a SLURM submission script and submits a batch job to run a Python script via srun.
+    Generate a SLURM array submission script and optionally submit it with sbatch.
 
-    Parameters:
-    - job_name (str): Name of the SLURM job.
-    - py_file (str): Path to the Python (.py) file to execute.
-    - rundirs_file (str): Path to a file containing a list of working directories (one per line).
-    - ram_gb (int, optional): Amount of RAM requested in GB (default: 30GB).
-    - ncores (int, optional): Number of cores (default: 1).
-    - time_hours (int, optional): Maximum runtime in hours (default: 30).
-    - envname (str, optional): Conda environment name to activate (default: "filaments").
-    - extra_args (dict, optional): Dictionary of extra environment variables to pass to the script.
+    Each SLURM array task reads one non-empty line from `rundirs_file`, changes
+    into that directory, exports the selected run directory as environment
+    variables, and runs the requested Python script with `srun`.
 
-    Example usage:
+    The Python script is executed inside a mamba/micromamba/conda environment
+    using `run`, for example:
+
+        mamba run -n filaments python -u analyze.py
+
+    or, if `env_prefix` is given:
+
+        mamba run -p /path/to/env python -u analyze.py
+
+    This avoids hard-coded `source conda.sh`, `source mamba.sh`, and
+    `mamba activate ...` lines in the generated SLURM script.
+
+    Parameters
+    ----------
+    job_name : str
+        Name of the SLURM job. Also used to name the generated submission file
+        as `{job_name}.submit` and the log files as
+        `logs/{job_name}_%A_task_%a.log`.
+
+    py_file : str
+        Path to the Python script to execute. The path is expanded with
+        `os.path.expanduser` and converted to an absolute path before being
+        written into the SLURM script.
+
+    rundirs_file : str
+        Path to a text file containing one run directory per line. Each
+        non-empty line corresponds to one SLURM array task. Empty lines are
+        ignored when counting and selecting tasks.
+
+    ram_gb : int or float, default 5
+        Amount of memory requested per SLURM array task, in GB. Written to the
+        submission script as `#SBATCH --mem={ram_gb}G`.
+
+    ncores : int, default 1
+        Number of CPU cores requested per SLURM task. Written as
+        `#SBATCH -c {ncores}`. Also used to set common numerical-library thread
+        variables such as `OMP_NUM_THREADS`, `MKL_NUM_THREADS`,
+        `OPENBLAS_NUM_THREADS`, and `NUMEXPR_NUM_THREADS`.
+
+    time_hours : int or float, default 30
+        Maximum walltime requested for the job, in hours. Written to the
+        submission script as `#SBATCH --time={time_hours}:00:00`.
+
+    envname : str, default "filaments"
+        Name of the mamba/micromamba/conda environment in which the Python
+        script should run. Used as:
+
+            ENV_RUNNER run -n envname python -u py_file
+
+        Ignored if `env_prefix` is provided.
+
+    extra_args : dict, optional
+        Dictionary of additional environment variables to export before running
+        the Python script.
+
+        Example:
+
+            extra_args={"param1": 42, "param2": 0.5}
+
+        will create exports in the SLURM script. Values are JSON-encoded, so
+        the Python script can recover them with for example:
+
+            import os, json
+            param1 = json.loads(os.environ["param1"])
+
+        Variable names must be valid shell environment variable names.
+
+    env_runner : str, default "/nfs/scistore26/saricgrp/fhorvath/miniforge3/bin/mamba"
+        Command or full path used to run the environment. Valid examples:
+
+            "auto"
+            "micromamba"
+            "mamba"
+            "conda"
+            "/full/path/to/micromamba"
+            "/full/path/to/mamba"
+
+        If set to `"auto"`, the generated SLURM script searches, in order, for
+        `micromamba`, `mamba`, and `conda` on `PATH`.
+
+        Note that the script uses `#SBATCH --export=NONE`, so your interactive
+        shell `PATH` may not be available inside the job. If auto-detection
+        fails, either provide a full path here or use `setup_commands` to modify
+        `PATH` or load a module.
+
+    env_prefix : str or None, default None
+        Optional full path to the environment prefix. If provided, the generated
+        script uses:
+
+            ENV_RUNNER run -p env_prefix python -u py_file
+
+        instead of:
+
+            ENV_RUNNER run -n envname python -u py_file
+
+        This is often more robust for micromamba environments.
+
+    setup_commands : str, default ""
+        Optional shell commands inserted into the SLURM script before searching
+        for `micromamba`, `mamba`, or `conda`.
+
+        Useful on clusters where environments are made available through
+        modules or manual PATH modification.
+
+        Examples:
+
+            setup_commands="module load micromamba"
+
+            setup_commands='export PATH="/path/to/miniforge3/bin:$PATH"'
+
+    dontsubmit : bool, default False
+        If True, write the SLURM submission script but do not call `sbatch`.
+        Useful for debugging the generated script.
+
+    Behavior
+    --------
+    The function:
+    1. Counts non-empty lines in `rundirs_file` to determine the SLURM array
+       size.
+    2. Creates a `logs/` directory if needed.
+    3. Writes a SLURM submission script named `{job_name}.submit`.
+    4. In each array task, selects the corresponding non-empty run directory.
+    5. Changes into that run directory.
+    6. Exports `rundir` and `runfold` environment variables.
+    7. Exports any variables provided through `extra_args`.
+    8. Runs the Python script inside the selected environment using
+       `mamba run`, `micromamba run`, or `conda run`.
+    9. Submits the script with `sbatch`, unless `dontsubmit=True`.
+
+    Example usage
+    -------------
+    Basic usage with the default mamba path:
+
         submit_python(
             job_name="run_analysis",
             py_file="analyze.py",
@@ -1166,29 +1313,123 @@ def submit_python(job_name, py_file, rundirs_file, ram_gb=5, ncores=1, time_hour
             ram_gb=10,
             ncores=2,
             time_hours=24,
+            envname="filaments",
             extra_args={"param1": 42, "param2": 0.5}
         )
+
+    Using automatic runner detection:
+
+        submit_python(
+            job_name="run_analysis",
+            py_file="analyze.py",
+            rundirs_file="rdirs.txt",
+            env_runner="auto",
+            envname="filaments",
+        )
+
+    Using micromamba with a full environment prefix:
+
+        submit_python(
+            job_name="run_analysis",
+            py_file="analyze.py",
+            rundirs_file="rdirs.txt",
+            env_runner="/path/to/micromamba",
+            env_prefix="/path/to/envs/filaments",
+        )
+
+    Debug without submitting:
+
+        submit_python(
+            job_name="run_analysis",
+            py_file="analyze.py",
+            rundirs_file="rdirs.txt",
+            dontsubmit=True,
+        )
+
+    Returns
+    -------
+    None
+        Writes a SLURM submission script and optionally submits it with sbatch.
     """
 
     extra_args = extra_args or {}
-    submit_file = f"{job_name}.submit"
-    py_basename = os.path.splitext(os.path.basename(py_file))[0]
 
-    # Count lines in rundirs_file to define array
+    submit_file = f"{job_name}.submit"
+
+    # Make paths absolute so the SLURM script does not depend on the directory
+    # from which the job starts.
+    py_file = os.path.abspath(os.path.expanduser(py_file))
+    rundirs_file = os.path.abspath(os.path.expanduser(rundirs_file))
+
+    if env_prefix is not None:
+        env_prefix = os.path.abspath(os.path.expanduser(env_prefix))
+    else:
+        env_prefix = ""
+
+    # Count non-empty lines. Each non-empty line becomes one array task.
     try:
         with open(rundirs_file, "r") as f:
-            max_index = sum(1 for _ in f)
+            max_index = sum(1 for line in f if line.strip())
+
         if max_index == 0:
             raise ValueError(f"Error: {rundirs_file} is empty!")
+
     except FileNotFoundError:
         raise FileNotFoundError(f"Error: {rundirs_file} not found!")
 
     os.makedirs("logs", exist_ok=True)
 
-    # Prepare extra environment variables
-    export_lines = "\n".join([f'export {k}="{v}"' for k, v in extra_args.items()])
+    # Convert extra_args into bash export lines.
+    # Values are JSON-encoded so scripts can decode them if needed.
+    export_lines = []
+    for key, value in extra_args.items():
+        if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", key):
+            raise ValueError(f"Invalid environment variable name: {key}")
 
-    script_content = f"""#!/bin/bash
+        encoded_value = json.dumps(value)
+        export_lines.append(f"export {key}={shlex.quote(encoded_value)}")
+
+    export_lines = "\n".join(export_lines)
+
+    # Bash block for finding micromamba/mamba/conda inside the SLURM job.
+    #
+    # If env_runner="auto", try micromamba, then mamba, then conda.
+    # If env_runner is a full path, check that it is executable.
+    # If env_runner is just "mamba", check that it exists on PATH.
+    if env_runner == "auto":
+        runner_block = r"""
+if command -v micromamba >/dev/null 2>&1; then
+    ENV_RUNNER="$(command -v micromamba)"
+elif command -v mamba >/dev/null 2>&1; then
+    ENV_RUNNER="$(command -v mamba)"
+elif command -v conda >/dev/null 2>&1; then
+    ENV_RUNNER="$(command -v conda)"
+else
+    echo "ERROR: could not find micromamba, mamba, or conda in PATH." >&2
+    echo "Use setup_commands='module load ...' or env_runner='/full/path/to/mamba'." >&2
+    exit 1
+fi
+"""
+    else:
+        runner_block = f"""
+ENV_RUNNER={shlex.quote(env_runner)}
+
+if [[ "$ENV_RUNNER" == */* ]]; then
+    if [[ ! -x "$ENV_RUNNER" ]]; then
+        echo "ERROR: env runner is not executable: $ENV_RUNNER" >&2
+        exit 1
+    fi
+else
+    if ! command -v "$ENV_RUNNER" >/dev/null 2>&1; then
+        echo "ERROR: env runner not found: $ENV_RUNNER" >&2
+        exit 1
+    fi
+
+    ENV_RUNNER="$(command -v "$ENV_RUNNER")"
+fi
+"""
+
+    script_content = f"""#!/bin/bash -l
 #SBATCH --array=1-{max_index}
 #SBATCH --job-name={job_name}
 #SBATCH --output=logs/{job_name}_%A_task_%a.log
@@ -1197,34 +1438,78 @@ def submit_python(job_name, py_file, rundirs_file, ram_gb=5, ncores=1, time_hour
 #SBATCH --mem={ram_gb}G
 #SBATCH --no-requeue
 #SBATCH --export=NONE
+
+set -euo pipefail
+
 unset SLURM_EXPORT_ENV
 
-export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
-export MKL_NUM_THREADS=$SLURM_CPUS_PER_TASK
-export OPENBLAS_NUM_THREADS=$SLURM_CPUS_PER_TASK
-export NUMEXPR_NUM_THREADS=$SLURM_CPUS_PER_TASK
+# Limit numerical libraries to the number of cores requested from SLURM.
+export OMP_NUM_THREADS="${{SLURM_CPUS_PER_TASK:-1}}"
+export MKL_NUM_THREADS="${{SLURM_CPUS_PER_TASK:-1}}"
+export OPENBLAS_NUM_THREADS="${{SLURM_CPUS_PER_TASK:-1}}"
+export NUMEXPR_NUM_THREADS="${{SLURM_CPUS_PER_TASK:-1}}"
 
-source /nfs/scistore26/saricgrp/fhorvath/miniforge3/etc/profile.d/conda.sh
-source /nfs/scistore26/saricgrp/fhorvath/miniforge3/etc/profile.d/mamba.sh
-eval "$(mamba shell hook --shell bash)"
-mamba activate {envname}
+# Optional cluster-specific setup.
+# Examples:
+#   module load micromamba
+#   export PATH="/path/to/miniforge3/bin:$PATH"
+{setup_commands}
 
-rundir=$(sed -n "${{SLURM_ARRAY_TASK_ID}}p" {rundirs_file})
+{runner_block}
 
-echo "Running analysis for directory: $rundir"
+PY_FILE={shlex.quote(py_file)}
+RUNDIRS_FILE={shlex.quote(rundirs_file)}
+ENV_NAME={shlex.quote(envname)}
+ENV_PREFIX={shlex.quote(env_prefix)}
 
-{export_lines}
+# Select the Nth non-empty line from the rundirs file.
+rundir="$(awk -v task="${{SLURM_ARRAY_TASK_ID}}" 'NF {{ n++; if (n == task) {{ print; exit }} }}' "$RUNDIRS_FILE")"
+
+if [[ -z "$rundir" ]]; then
+    echo "ERROR: empty rundir for task $SLURM_ARRAY_TASK_ID" >&2
+    exit 1
+fi
+
+echo "SLURM job ID: $SLURM_JOB_ID"
+echo "SLURM array task: $SLURM_ARRAY_TASK_ID"
+echo "Running in directory: $rundir"
+echo "Python script: $PY_FILE"
+echo "Environment runner: $ENV_RUNNER"
+echo "Environment name: $ENV_NAME"
+echo "Environment prefix: $ENV_PREFIX"
+
+cd "$rundir"
+
+# Export the rundir so the Python script can read it with os.environ["rundir"].
 export rundir="$rundir"
+export runfold="$rundir"
 
-srun python -u {py_file}
+# Extra user-provided environment variables.
+{export_lines}
+
+# Run Python inside the requested mamba/micromamba/conda environment.
+if [[ -n "$ENV_PREFIX" ]]; then
+    srun "$ENV_RUNNER" run -p "$ENV_PREFIX" python -u "$PY_FILE"
+else
+    srun "$ENV_RUNNER" run -n "$ENV_NAME" python -u "$PY_FILE"
+fi
 """
+
+    script_content = textwrap.dedent(script_content)
 
     with open(submit_file, "w") as f:
         f.write(script_content)
-    
+
     print(f"Submission script '{submit_file}' created.")
-    subprocess.run(["sbatch", submit_file], check=True)
-    print(f"Job '{job_name}' submitted.")
+
+    if not dontsubmit:
+        command = ["sbatch", submit_file]
+        print("Executing command:", " ".join(command))
+        subprocess.run(command, check=True)
+        print(f"Job '{job_name}' submitted.")
+
+
+
 
 
 import gzip

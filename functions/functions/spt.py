@@ -873,3 +873,245 @@ def interactive_window_metric(df, pid, window_sizes, metric_fn,
 
     L_slider.observe(on_change, names="value")
     start_slider.observe(on_change, names="value")
+
+
+
+import numpy as np
+import orientationpy
+
+
+def calc_orientation(
+    image,
+    boxSizePixels=10,
+    sigma=1,
+    intensity_threshold=0.05,
+    mode="fiber",
+    time_axis=0,
+    return_pixel_maps=False,
+):
+    """
+    Calculate local orientation vectors for a 2D image or a time stack of 2D images.
+
+    Parameters
+    ----------
+    image : ndarray
+        Either a 2D image with shape (y, x), or a 3D stack with shape
+        (t, y, x) by default.
+
+    boxSizePixels : int or tuple of int, optional
+        Size of the local boxes used to average orientation vectors.
+        If int, the same size is used in y and x.
+
+    sigma : float, optional
+        Smoothing scale used for the full-resolution structure tensor.
+
+    intensity_threshold : float, optional
+        Normalized intensity threshold below which vectors are hidden by
+        setting them to zero.
+
+    mode : str, optional
+        Orientation mode passed to orientationpy.computeOrientation.
+        For fiber-like structures, use "fiber".
+
+    time_axis : int, optional
+        Axis corresponding to time if image is 3D.
+
+    return_pixel_maps : bool, optional
+        If True, also return full-resolution intensity, directionality,
+        and orientation maps.
+
+    Returns
+    -------
+    result : dict or list of dict
+        If input is 2D, returns a single dictionary.
+        If input is 3D, returns a list of dictionaries, one per time frame.
+
+        Each dictionary contains:
+            "box_centres_x"
+            "box_centres_y"
+            "vectors_yx"
+            "intensity_boxes"
+            "intensity_boxes_normalized"
+            "orientations_boxes"
+
+        vectors_yx has shape:
+            (2, n_boxes_y, n_boxes_x)
+
+        vectors_yx[0] is the y-component.
+        vectors_yx[1] is the x-component.
+    """
+
+    image = np.asarray(image)
+
+    if image.ndim not in (2, 3):
+        raise ValueError(
+            "image must be either a 2D image with shape (y, x) "
+            "or a 3D stack with shape (t, y, x)."
+        )
+
+    if np.isscalar(boxSizePixels):
+        box_y = box_x = int(boxSizePixels)
+    else:
+        box_y, box_x = map(int, boxSizePixels)
+
+    if box_y <= 0 or box_x <= 0:
+        raise ValueError("boxSizePixels must be positive.")
+
+    def _analyse_single_frame(frame):
+        frame = np.asarray(frame, dtype=float)
+
+        if frame.ndim != 2:
+            raise ValueError("Each frame must be 2D.")
+
+        # Compute image gradients
+        Gy, Gx = orientationpy.computeGradient(frame)
+
+        # Compute local structure tensor in boxes
+        structure_tensor_boxes = orientationpy.computeStructureTensorBoxes(
+            [Gy, Gx],
+            [box_y, box_x],
+        )
+
+        # Box-wise intensity
+        intensity_boxes = orientationpy.computeIntensity(structure_tensor_boxes)
+
+        # Avoid divide-by-zero if the image is empty or uniform
+        max_intensity = np.nanmax(intensity_boxes)
+
+        if np.isfinite(max_intensity) and max_intensity > 0:
+            intensity_boxes_normalized = intensity_boxes / max_intensity
+        else:
+            intensity_boxes_normalized = np.zeros_like(intensity_boxes, dtype=float)
+
+        # Box-wise orientations
+        orientations_boxes = orientationpy.computeOrientation(
+            structure_tensor_boxes,
+            mode=mode,
+        )
+
+        # Convert orientations to y/x vector components
+        vectors_yx = orientationpy.anglesToVectors(orientations_boxes)
+        vectors_yx = np.asarray(vectors_yx, dtype=float)
+
+        # Hide vectors in low-signal boxes
+        low_signal = intensity_boxes_normalized < intensity_threshold
+        vectors_yx[:, low_signal] = 0.0
+
+        # Compute box centre coordinates
+        n_boxes_y, n_boxes_x = intensity_boxes.shape
+
+        box_centres_y = np.arange(n_boxes_y) * box_y + box_y / 2
+        box_centres_x = np.arange(n_boxes_x) * box_x + box_x / 2
+
+        result = {
+            "box_centres_x": box_centres_x,
+            "box_centres_y": box_centres_y,
+            "vectors_yx": vectors_yx,
+            "intensity_boxes": intensity_boxes,
+            "intensity_boxes_normalized": intensity_boxes_normalized,
+            "orientations_boxes": orientations_boxes,
+        }
+
+        if return_pixel_maps:
+            structure_tensor = orientationpy.computeStructureTensor(
+                [Gy, Gx],
+                sigma=sigma,
+            )
+
+            intensity = orientationpy.computeIntensity(structure_tensor)
+            directionality = orientationpy.computeStructureDirectionality(
+                structure_tensor
+            )
+            orientations = orientationpy.computeOrientation(
+                structure_tensor,
+                mode=mode,
+            )
+
+            result.update(
+                {
+                    "intensity": intensity,
+                    "directionality": directionality,
+                    "orientations": orientations,
+                    "structure_tensor": structure_tensor,
+                }
+            )
+
+        return result
+
+    # Single image
+    if image.ndim == 2:
+        return _analyse_single_frame(image)
+
+    # Time stack
+    stack = np.moveaxis(image, time_axis, 0)
+
+    results = []
+    for t in range(stack.shape[0]):
+        results.append(_analyse_single_frame(stack[t]))
+
+    return results
+
+def plot_orientation_frame(
+    image_stack,
+    results,
+    t=0,
+    cmap="Greys_r",
+    vector_color="r",
+    scale=0.1,
+    vmin=0,
+):
+    """
+    Plot local orientation vectors for one frame of an image stack.
+
+    Parameters
+    ----------
+    image_stack : ndarray
+        Image stack with shape (time, y, x).
+
+    results : list of dict
+        Output from calc_orientation(image_stack).
+
+    t : int
+        Time frame to plot.
+
+    cmap : str
+        Matplotlib colormap for the image.
+
+    vector_color : str
+        Color of orientation vectors.
+
+    scale : float
+        Quiver scaling parameter. Smaller values make vectors longer.
+
+    vmin : float or None
+        Minimum display intensity for imshow.
+    """
+
+    frame = image_stack[t]
+    res = results[t]
+
+    boxCentresX = res["box_centres_x"]
+    boxCentresY = res["box_centres_y"]
+    boxVectorsYX = res["vectors_yx"]
+
+    plt.figure(figsize=(4,4))
+    plt.title(f"Local orientation vectors in boxes, frame {t}")
+
+    plt.imshow(frame, cmap=cmap, vmin=vmin)
+
+    plt.quiver(
+        boxCentresX,
+        boxCentresY,
+        boxVectorsYX[1],
+        boxVectorsYX[0],
+        angles="xy",
+        scale_units="xy",
+        scale=scale,
+        color=vector_color,
+        headwidth=0,
+        headlength=0,
+        headaxislength=1,
+    )
+
+    plt.axis("image")
+    plt.show()

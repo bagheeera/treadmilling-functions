@@ -151,3 +151,58 @@ variable            mfyField atom -1.0*v_fyField
 
 fix                 fcurvH HeadMons addforce v_fxField v_fyField 0
 fix                 fcurvT TailMons addforce v_mfxField v_mfyField 0"""
+
+expl_hydr_constraint = 'custom "v_kdis > random(0,1,v_seed)" \n' + \
+'custom "rxnsum(v_vCreationSteps,1)-ln(1e-12+rxnsum(v_vHydrolysisRn,1))*v_thyd < step"'
+
+def activation_moleculecmds(synthreactions):
+    return  f"""
+## activating particles
+# div templates
+## 5 and 9 are the processive states
+## 8 is activator
+## 10 is ghost
+## 6 is passive and Z-attracted
+molecule mPreDiviDeact {synthreactions}/state5_to_6_pre.txt
+molecule mPostDiviDeact {synthreactions}/state5_to_6_post.txt
+molecule mPreact {synthreactions}/state6_to_5_pre.txt
+molecule mPostact {synthreactions}/state6_to_5_post.txt
+# type9 synthreactions
+molecule mPreact9 {synthreactions}/state6_to_9_pre.txt
+molecule mPostact9 {synthreactions}/state6_to_9_post.txt
+molecule mPreDiviDeact9 {synthreactions}/state9_to_6_pre.txt
+molecule mPostDiviDeact9 {synthreactions}/state9_to_6_post.txt
+
+## switch on filament-synth interactions
+molecule mPre10to6 {synthreactions}/state10_to_6_pre_gridtype7.txt
+molecule mPost10to6 {synthreactions}/state10_to_6_post_gridtype7.txt
+"""
+def processive_addforce(fsynth):
+    return f"""variable            vSynth atom "type==5" # || type==6"
+group               synth dynamic all var vSynth every 1
+fix                 fsynth synth addforce {fsynth} 0 0
+#
+variable            vSynth9 atom "type==9" # || type==6"
+group               synth9 dynamic all var vSynth9 every 1
+fix                 fsynth9 synth9 addforce {-fsynth} 0 0"""
+def synth_activation_reactions(synthreactions_folder):
+    return f"""             react diviact  &
+                    all  ${{rstep}}  &
+                    0.000000 9999  &
+                    mPreDiviDeact mPostDiviDeact  {synthreactions_folder}/state5_to_6_map.txt &
+                    prob v_pdeact ${{seed}} &
+                react diviact &
+                    all ${{rstep}}   &
+                    0.000000 9999 &
+                    mPreact mPostact {synthreactions_folder}/state6_to_5_map.txt &
+                    prob v_pact ${{seed}} &
+                react diviact9  &
+                    all  ${{rstep}}  &
+                    0.000000 9999  &
+                    mPreDiviDeact9 mPostDiviDeact9  {synthreactions_folder}/state5_to_6_map.txt &
+                    prob v_pdeact ${{seed}} &
+                react diviact9 &
+                    all ${{rstep}}   &
+                    0.000000 9999 &
+                    mPreact9 mPostact9 {synthreactions_folder}/state6_to_5_map.txt &
+                    prob v_pact ${{seed}} &"""
