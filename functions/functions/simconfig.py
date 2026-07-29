@@ -110,9 +110,9 @@ base = {
     "strandheight": 3.0 # # see https://journals.asm.org/doi/10.1128/jb.186.18.5978-5987.2004 and https://www.nature.com/articles/ncomms15370
 }
 # print(os.getcwd())
-import subprocess
-git_hash = subprocess.check_output(["git", "rev-parse", "HEAD"]).strip().decode()
-base["git_hash"] = git_hash
+# import subprocess
+# git_hash = subprocess.check_output(["git", "rev-parse", "HEAD"]).strip().decode()
+# base["git_hash"] = git_hash
 
 
 
