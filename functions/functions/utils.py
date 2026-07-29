@@ -1489,7 +1489,7 @@ export runfold="$rundir"
 
 # Run Python inside the requested mamba/micromamba/conda environment.
 if [[ -n "$ENV_PREFIX" ]]; then
-    srun "$ENV_RUNNER" run -p "$ENV_PREFIX" python -u "$PY_FILE"
+    srun "$ENV_PREFIX/bin/python" -u "$PY_FILE"
 else
     srun "$ENV_RUNNER" run -n "$ENV_NAME" python -u "$PY_FILE"
 fi
