@@ -1115,3 +1115,299 @@ def plot_orientation_frame(
 
     plt.axis("image")
     plt.show()
+
+
+import numpy as np
+import pandas as pd
+
+
+def calc_orientation_displacement_alignment(
+    stack,
+    df,
+    calc_orientation_func,
+    boxSizePixels=10,
+    sigma=1,
+    coordinate_scale=3.2,
+    x_range=None,
+    y_range=None,
+    x_col="x",
+    y_col="y",
+    time_col="time",
+    id_col="id",
+    time_values=None,
+    min_n=1,
+    require_consecutive=True,
+    max_dt=1,
+    normalize_by_dt=False,
+    weight_by="n",
+):
+    """
+    Calculate orientation/displacement alignment for an image stack and trajectories.
+
+    Parameters
+    ----------
+    stack : ndarray
+        Image stack, usually shape (time, y, x).
+
+    df : pandas.DataFrame
+        Trajectory dataframe containing x, y, time, and particle id columns.
+
+    calc_orientation_func : callable
+        Function used to calculate local orientations.
+        For your case, pass fct.spt.calc_orientation.
+
+    boxSizePixels : int
+        Orientation box size in pixels.
+
+    sigma : float
+        Sigma passed to calc_orientation_func.
+
+    coordinate_scale : float
+        Scale factor applied to df[x_col], df[y_col].
+        In your example this is 3.2.
+
+    x_range, y_range : tuple or None
+        Binning ranges in pixel coordinates.
+        If None, uses image dimensions: x_range=(0, width), y_range=(0, height).
+
+    min_n : int
+        Minimum number of displacement vectors per bin required for analysis.
+
+    require_consecutive : bool
+        If True, only use displacements between consecutive time points.
+
+    max_dt : int or float
+        Required frame step if require_consecutive=True.
+
+    normalize_by_dt : bool
+        If True, computes velocity-like dx/dt, dy/dt instead of raw displacement.
+
+    weight_by : {"n", "disp_mag", None}
+        How to average the per-bin alignment over space for each time frame.
+
+    Returns
+    -------
+    out : dict
+        Contains orientation fields, displacement fields, dot products,
+        cosine alignment, nematic alignment, and dataframe summaries.
+    """
+
+    stack = np.asarray(stack)
+
+    if stack.ndim != 3:
+        raise ValueError("Expected stack with shape (time, y, x).")
+
+    n_stack_time, image_height, image_width = stack.shape
+
+    if x_range is None:
+        x_range = (0, image_width)
+
+    if y_range is None:
+        y_range = (0, image_height)
+
+    # ---------------------------------------------------------------------
+    # 1. Calculate local orientation field
+    # ---------------------------------------------------------------------
+    results = calc_orientation_func(
+        stack,
+        boxSizePixels=boxSizePixels,
+        sigma=sigma,
+    )
+
+    # vectors_yx[0] = y-component, vectors_yx[1] = x-component
+    U = np.stack([r["vectors_yx"][1] for r in results])  # x-component
+    V = np.stack([r["vectors_yx"][0] for r in results])  # y-component
+
+    n_time, n_bins_y, n_bins_x = U.shape
+
+    # ---------------------------------------------------------------------
+    # 2. Construct bin edges matching the orientation field
+    # ---------------------------------------------------------------------
+    x_edges = np.linspace(x_range[0], x_range[1], n_bins_x + 1)
+    y_edges = np.linspace(y_range[0], y_range[1], n_bins_y + 1)
+
+    # ---------------------------------------------------------------------
+    # 3. Calculate per-particle displacements
+    # ---------------------------------------------------------------------
+    d = df.copy()
+
+    d[x_col] = coordinate_scale * d[x_col]
+    d[y_col] = coordinate_scale * d[y_col]
+
+    if id_col is not None and id_col in d.columns:
+        d = d.sort_values([id_col, time_col]).reset_index(drop=True)
+
+        d["x_next"] = d.groupby(id_col)[x_col].shift(-1)
+        d["y_next"] = d.groupby(id_col)[y_col].shift(-1)
+        d["time_next"] = d.groupby(id_col)[time_col].shift(-1)
+    else:
+        d = d.sort_values(time_col).reset_index(drop=True)
+
+        d["x_next"] = d[x_col].shift(-1)
+        d["y_next"] = d[y_col].shift(-1)
+        d["time_next"] = d[time_col].shift(-1)
+
+    d["dt"] = d["time_next"] - d[time_col]
+    d["dx"] = d["x_next"] - d[x_col]
+    d["dy"] = d["y_next"] - d[y_col]
+
+    d = d.dropna(subset=["dx", "dy", "dt"]).copy()
+
+    if require_consecutive:
+        d = d[np.isclose(d["dt"], max_dt)].copy()
+
+    if normalize_by_dt:
+        d["dx"] = d["dx"] / d["dt"]
+        d["dy"] = d["dy"] / d["dt"]
+
+    # ---------------------------------------------------------------------
+    # 4. Assign starting positions to bins
+    # ---------------------------------------------------------------------
+    d["x_bin"] = np.searchsorted(x_edges, d[x_col], side="right") - 1
+    d["y_bin"] = np.searchsorted(y_edges, d[y_col], side="right") - 1
+
+    # Include points exactly on the rightmost edge
+    d.loc[d[x_col] == x_edges[-1], "x_bin"] = n_bins_x - 1
+    d.loc[d[y_col] == y_edges[-1], "y_bin"] = n_bins_y - 1
+
+    # Discard out-of-range points
+    d = d[
+        (d["x_bin"] >= 0) & (d["x_bin"] < n_bins_x) &
+        (d["y_bin"] >= 0) & (d["y_bin"] < n_bins_y)
+    ].copy()
+
+    d["x_bin"] = d["x_bin"].astype(int)
+    d["y_bin"] = d["y_bin"].astype(int)
+
+    # ---------------------------------------------------------------------
+    # 5. Average displacement vectors per time/bin
+    # ---------------------------------------------------------------------
+    agg = (
+        d.groupby([time_col, "y_bin", "x_bin"])
+        .agg(
+            dx=("dx", "mean"),
+            dy=("dy", "mean"),
+            n=("dx", "size"),
+        )
+        .reset_index()
+    )
+
+    # ---------------------------------------------------------------------
+    # 6. Convert displacement dataframe into dense arrays
+    # ---------------------------------------------------------------------
+    if time_values is None:
+        # Assumes dataframe time values correspond directly to stack frame indices
+        time_values = np.arange(n_time)
+    else:
+        time_values = np.asarray(time_values)
+
+    if len(time_values) != n_time:
+        raise ValueError(
+            "time_values must have the same length as the number of frames "
+            "in the orientation result."
+        )
+
+    time_to_index = {t: i for i, t in enumerate(time_values)}
+
+    agg["t_index"] = agg[time_col].map(time_to_index)
+    agg = agg.dropna(subset=["t_index"]).copy()
+    agg["t_index"] = agg["t_index"].astype(int)
+
+    DX = np.full((n_time, n_bins_y, n_bins_x), np.nan)
+    DY = np.full((n_time, n_bins_y, n_bins_x), np.nan)
+    N = np.zeros((n_time, n_bins_y, n_bins_x), dtype=int)
+
+    t_idx = agg["t_index"].to_numpy(int)
+    y_idx = agg["y_bin"].to_numpy(int)
+    x_idx = agg["x_bin"].to_numpy(int)
+
+    DX[t_idx, y_idx, x_idx] = agg["dx"].to_numpy()
+    DY[t_idx, y_idx, x_idx] = agg["dy"].to_numpy()
+    N[t_idx, y_idx, x_idx] = agg["n"].to_numpy()
+
+    # ---------------------------------------------------------------------
+    # 7. Dot product, cross product, and normalized alignment
+    # ---------------------------------------------------------------------
+    orient_mag = np.hypot(U, V)
+    disp_mag = np.hypot(DX, DY)
+
+    dot = U * DX + V * DY
+    cross = U * DY - V * DX
+
+    with np.errstate(invalid="ignore", divide="ignore"):
+        cos_angle = dot / (orient_mag * disp_mag)
+
+    invalid = (
+        (orient_mag == 0) |
+        (disp_mag == 0) |
+        (N < min_n) |
+        ~np.isfinite(cos_angle)
+    )
+
+    cos_angle[invalid] = np.nan
+    dot[invalid] = np.nan
+    cross[invalid] = np.nan
+
+    # For fiber/nematic orientation, direction sign does not matter.
+    # S = +1 means parallel or antiparallel.
+    # S =  0 means random/45 degrees.
+    # S = -1 means perpendicular.
+    nematic_S = 2 * cos_angle**2 - 1
+    abs_cos_angle = np.abs(cos_angle)
+
+    # ---------------------------------------------------------------------
+    # 8. Spatial average per time frame
+    # ---------------------------------------------------------------------
+    def nanmean_per_time(A):
+        return np.nanmean(A, axis=(1, 2))
+
+    def weighted_nanmean_per_time(A, W):
+        valid = np.isfinite(A) & np.isfinite(W) & (W > 0)
+        numerator = np.sum(np.where(valid, A * W, 0), axis=(1, 2))
+        denominator = np.sum(np.where(valid, W, 0), axis=(1, 2))
+
+        out = np.full(A.shape[0], np.nan)
+        good = denominator > 0
+        out[good] = numerator[good] / denominator[good]
+        return out
+
+    if weight_by is None:
+        alignment_nematic = nanmean_per_time(nematic_S)
+        alignment_abs_cos = nanmean_per_time(abs_cos_angle)
+        alignment_signed_cos = nanmean_per_time(cos_angle)
+    elif weight_by == "n":
+        W = N.astype(float)
+        alignment_nematic = weighted_nanmean_per_time(nematic_S, W)
+        alignment_abs_cos = weighted_nanmean_per_time(abs_cos_angle, W)
+        alignment_signed_cos = weighted_nanmean_per_time(cos_angle, W)
+    elif weight_by == "disp_mag":
+        W = disp_mag
+        alignment_nematic = weighted_nanmean_per_time(nematic_S, W)
+        alignment_abs_cos = weighted_nanmean_per_time(abs_cos_angle, W)
+        alignment_signed_cos = weighted_nanmean_per_time(cos_angle, W)
+    else:
+        raise ValueError("weight_by must be one of {'n', 'disp_mag', None}.")
+
+    out = {
+        "results": results,
+        "U": U,
+        "V": V,
+        "DX": DX,
+        "DY": DY,
+        "N": N,
+        "dot": dot,
+        "cross": cross,
+        "cos_angle": cos_angle,
+        "abs_cos_angle": abs_cos_angle,
+        "nematic_S": nematic_S,
+        "alignment_nematic": alignment_nematic,
+        "alignment_abs_cos": alignment_abs_cos,
+        "alignment_signed_cos": alignment_signed_cos,
+        "agg": agg,
+        "displacements": d,
+        "x_edges": x_edges,
+        "y_edges": y_edges,
+        "time_values": time_values,
+    }
+
+    return out
