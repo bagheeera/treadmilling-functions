@@ -1163,7 +1163,8 @@ def submit_python(
     extra_args=None,
     # env_runner="/nfs/scistore26/saricgrp/fhorvath/miniforge3/bin/mamba",
     env_runner="auto",
-    env_prefix=None,
+    # env_prefix=None,
+    env_prefix="/nfs/scistore26/saricgrp/fhorvath/miniforge3/envs/filaments",
     setup_commands="",
     dontsubmit=False,
 ):
@@ -1552,8 +1553,9 @@ def safe_write_df(df, rundir):
     # Atomically replace
     tmp.replace(final)  # atomic on POSIX systems
 
-from .analysis import read_xyz
+
 def load(rundir, dontwritedf=False):
+    from .analysis import read_xyz
     import pyarrow.feather as feather
     import os
     
