@@ -1161,7 +1161,8 @@ def submit_python(
     time_hours=30,
     envname="filaments",
     extra_args=None,
-    env_runner="/nfs/scistore26/saricgrp/fhorvath/miniforge3/bin/mamba",
+    # env_runner="/nfs/scistore26/saricgrp/fhorvath/miniforge3/bin/mamba",
+    env_runner="auto",
     env_prefix=None,
     setup_commands="",
     dontsubmit=False,
@@ -1455,7 +1456,10 @@ export NUMEXPR_NUM_THREADS="${{SLURM_CPUS_PER_TASK:-1}}"
 #   export PATH="/path/to/miniforge3/bin:$PATH"
 {setup_commands}
 
+# Only validate/find ENV_RUNNER if ENV_PREFIX is empty
+if [[ -z {shlex.quote(env_prefix)} ]]; then
 {runner_block}
+fi
 
 PY_FILE={shlex.quote(py_file)}
 RUNDIRS_FILE={shlex.quote(rundirs_file)}
@@ -1474,7 +1478,7 @@ echo "SLURM job ID: $SLURM_JOB_ID"
 echo "SLURM array task: $SLURM_ARRAY_TASK_ID"
 echo "Running in directory: $rundir"
 echo "Python script: $PY_FILE"
-echo "Environment runner: $ENV_RUNNER"
+echo "Environment runner: ${{ENV_RUNNER:-N/A}}"
 echo "Environment name: $ENV_NAME"
 echo "Environment prefix: $ENV_PREFIX"
 
@@ -1489,8 +1493,10 @@ export runfold="$rundir"
 
 # Run Python inside the requested mamba/micromamba/conda environment.
 if [[ -n "$ENV_PREFIX" ]]; then
+    echo "running with $ENV_PREFIX/bin/python"
     srun "$ENV_PREFIX/bin/python" -u "$PY_FILE"
 else
+    echo "running via $ENV_RUNNER"
     srun "$ENV_RUNNER" run -n "$ENV_NAME" python -u "$PY_FILE"
 fi
 """

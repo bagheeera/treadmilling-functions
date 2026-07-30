@@ -211,7 +211,7 @@ import os
 import glob
 from IPython.display import Video, display
 
-def show_mp4(D, key, index=0, pick_render=True):
+def show_mp4(D, key, index=None, pick_render=True):
     """
     List and optionally display .mp4 files in D[key]['rundir'].
 
@@ -249,7 +249,7 @@ def show_mp4(D, key, index=0, pick_render=True):
         print(f"[{i}] {os.path.basename(f)} ") # (mod: {ts:%Y‑%m‑%d %H:%M:%S})")
 
     # ── Display ────────────────────────────────────────────────
-    if pick_render:
+    if pick_render and index is None:
         sel_mp4s = [f for f in mp4s if "render" in f]
         if len(sel_mp4s) > 1:
             print("! multiple 'render' mp4s found")
@@ -259,8 +259,8 @@ def show_mp4(D, key, index=0, pick_render=True):
             print(f"\nShowing [{index}] → {os.path.basename(selfile)}")
             display(Video(selfile, embed=True))
             return
-    if index is None:
-        return  # user only wanted the list
+    # if index is None:
+    #     return  # user only wanted the list
 
     if not (0 <= index < len(mp4s)):
         print(f"[!] Invalid index {index}. Choose 0‑{len(mp4s)-1}.")
