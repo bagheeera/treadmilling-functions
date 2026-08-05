@@ -16,7 +16,8 @@ def diam_plot(D, key, ax, modelonly=False, overlay="Overlay",
               inset_ylim=None,
               color=None,
               inset_yaxis_right=False,
-              borderpad=3):
+              borderpad=3,
+              show_inset=True,):
     # 1. Main Plot Logic
     t, r = np.array(D[key]["t_r"]).T
     diam_md = r * 2 * 5
@@ -31,7 +32,7 @@ def diam_plot(D, key, ax, modelonly=False, overlay="Overlay",
         ax.plot(t_model, d_alpha(t_model, tau_c, alpha), color=coltharp_color, label=coltharp_label,
                 ls="--")
 
-    if "H_total" in D[key]:
+    if "H_total" in D[key] and show_inset:
         # 2. Handle the Inset (Check if it already exists to avoid duplicaates)
         # We store the inset reference in the main axes object to retrieve it later
         if not hasattr(ax, "my_inset"):

@@ -1139,7 +1139,7 @@ def calc_orientation_displacement_alignment(
     require_consecutive=True,
     max_dt=1,
     normalize_by_dt=False,
-    weight_by="n",
+    weight_by=None,
 ):
     """
     Calculate orientation/displacement alignment for an image stack and trajectories.
@@ -1182,7 +1182,7 @@ def calc_orientation_displacement_alignment(
     normalize_by_dt : bool
         If True, computes velocity-like dx/dt, dy/dt instead of raw displacement.
 
-    weight_by : {"n", "disp_mag", None}
+    weight_by : {"n", "disp_mag", "orient_mag", None}
         How to average the per-bin alignment over space for each time frame.
 
     Returns
@@ -1385,6 +1385,11 @@ def calc_orientation_displacement_alignment(
         alignment_nematic = weighted_nanmean_per_time(nematic_S, W)
         alignment_abs_cos = weighted_nanmean_per_time(abs_cos_angle, W)
         alignment_signed_cos = weighted_nanmean_per_time(cos_angle, W)
+    elif weight_by == "orient_mag":
+        W = orient_mag
+        alignment_nematic = weighted_nanmean_per_time(nematic_S, W)
+        alignment_abs_cos = weighted_nanmean_per_time(abs_cos_angle, W)
+        alignment_signed_cos = weighted_nanmean_per_time(cos_angle, W)
     else:
         raise ValueError("weight_by must be one of {'n', 'disp_mag', None}.")
 
@@ -1411,3 +1416,218 @@ def calc_orientation_displacement_alignment(
     }
 
     return out
+
+
+
+from pathlib import Path
+import tifffile as tiff
+
+def load_triplet(folder: str, exposure_dict):
+    """
+    Load the XML dataframe and both wavelength STK stacks
+    for one exposure group.
+
+    Returns
+    -------
+    df : pandas.DataFrame
+        Data read from the XML file.
+    stk_488 : ndarray
+        Stack containing 'Tirf488' in the filename.
+    stk_640 : ndarray
+        Stack containing 'Tirf640' in the filename.
+    """
+    xml_path = Path(exposure_dict["xml"][0])
+    stk_files = [Path(s) for s in exposure_dict["stk"]]
+
+    stk_488 = next((p for p in stk_files
+                    if "488" in p.name and "tirf" in p.name.lower()), None)
+    stk_640 = next((p for p in stk_files
+                    if "640" in p.name and "tirf" in p.name.lower()), None)
+
+    if not stk_488 or not stk_640:
+        raise ValueError(f"Could not find both 488‑ and 640‑channel STKs in {folder}")
+
+    df = fct.spt.read_xml(xml_path)
+    stack_488 = tiff.imread(stk_488)
+    stack_640 = tiff.imread(stk_640)
+
+    return df, stack_488, stack_640
+    
+
+def parse_all_files(path, timeunit_to_ms):
+
+    """Group stk/xml files by (folder, exposure-label) via timeunit parsing.
+
+    timeunit_to_ms: callable, e.g. fct.spt.timeunit_to_ms
+    """
+    from collections import defaultdict
+
+    experiments = defaultdict(lambda: defaultdict(lambda: {"stk": [], "xml": [], "tifxml": []}))
+    with open(path) as f:
+        for line in f:
+            file = Path(line.strip())
+            name = file.stem
+            exp_key = str(file.parent)
+            sub_key = f"{timeunit_to_ms(name):g}ms"
+            suffix = file.suffix.lower()
+            if suffix == ".stk":
+                experiments[exp_key][sub_key]["stk"].append(str(file))
+            elif suffix == ".xml":
+                kind = "tifxml" if name.endswith(".tif") else "xml"
+                experiments[exp_key][sub_key][kind].append(str(file))
+    return experiments
+
+
+def apply_manual_overrides(experiments, manual_groups):
+    """Replace auto-grouped entries for folders with hand-specified groupings."""
+    for folder, groups in manual_groups.items():
+        if folder not in experiments:
+            continue
+        experiments[folder].clear()
+        for label, filespec in groups.items():
+            for kind in ("stk", "xml"):
+                for name in filespec.get(kind, []):
+                    experiments[folder][label][kind].append(str(Path(folder) / name))
+    return experiments
+
+
+def print_summary(experiments):
+    for folder, subdict in experiments.items():
+        print(f"\n{folder}")
+        for exposure, data in sorted(subdict.items()):
+            print(f"  {exposure}:  {len(data['stk'])} stk,  {len(data['xml'])} xml,  {len(data['tifxml'])} tifxml")
+
+
+def check_experiments(experiments, expect=(2, 1, 0)):
+    """Split exposures into (ok, flagged) by (n_stk, n_xml, n_tifxml) counts.
+
+    Folders that contain only tif.xml entries (no stk/xml at all) are skipped.
+    """
+    ok, flagged = [], []
+    for folder, subdict in experiments.items():
+        if all(len(v["stk"]) == 0 and len(v["xml"]) == 0 and len(v["tifxml"]) > 0
+               for v in subdict.values()):
+            continue
+        for exposure, data in subdict.items():
+            counts = (len(data["stk"]), len(data["xml"]), len(data["tifxml"]))
+            (ok if counts == expect else flagged).append((folder, exposure, *counts))
+    # ok entries only need (folder, exposure); trim the counts back off
+    ok = [(folder, exposure) for folder, exposure, *_ in ok]
+    return ok, flagged
+
+
+def classify_folder(folder):
+    """Assign a folder to a strain group based on its name, or None if unmatched."""
+    name = folder.lower()
+    if "sumo" in name:
+        return "SUMO"
+    if "star" in name:
+        return "star"
+    if "wt" in name:
+        return "wt"
+    return None
+
+
+def build_results(experiments, ok_experiments):
+    results = {"star": {}, "wt": {}, "SUMO": {}}
+    for folder, exposure in ok_experiments:
+        group = classify_folder(folder)
+        if group is None:
+            continue  # e.g. ZipA folders currently fall through unclassified
+        label = f"{Path(folder).name}_{exposure}"
+        results[group][label] = {
+            "folder": folder,
+            "exposure": exposure,
+            **experiments[folder][exposure],
+        }
+    return results
+
+
+def load_triplet(folder: str, exposure_dict):
+    """
+    Load the XML dataframe and both wavelength STK stacks
+    for one exposure group.
+
+    Returns
+    -------
+    df : pandas.DataFrame
+        Data read from the XML file.
+    stk_488 : ndarray
+        Stack containing 'Tirf488' in the filename.
+    stk_640 : ndarray
+        Stack containing 'Tirf640' in the filename.
+    """
+    xml_path = Path(exposure_dict["xml"][0])
+    stk_files = [Path(s) for s in exposure_dict["stk"]]
+
+    stk_488 = next((p for p in stk_files if "488" in p.name and "tirf" in p.name.lower()), None)
+    stk_640 = next((p for p in stk_files if "640" in p.name and "tirf" in p.name.lower()), None)
+
+    if not stk_488 or not stk_640:
+        raise ValueError(f"Could not find both 488- and 640-channel STKs in {folder}")
+
+    df = fct.spt.read_xml(xml_path)
+    stack_488 = tiff.imread(stk_488)
+    stack_640 = tiff.imread(stk_640)
+
+    return df, stack_488, stack_640
+
+
+def flatten_results(results_all):
+    """Flatten results_all into a list of experiment records, one per exposure.
+ 
+    Each record carries group/label plus everything load_triplet needs, so a
+    job just needs an integer index into this list -- no dict traversal.
+    """
+    flat = []
+    for group, exps in results_all.items():
+        for label, data in exps.items():
+            flat.append({"group": group, "label": label, **data})
+    return flat
+ 
+ 
+def iter_loaded_experiments(results_all):
+    """Lazily yield (group, label, df, stack_488, stack_640) for each experiment.
+ 
+    Loads one experiment at a time so large STK stacks aren't all held in
+    memory at once.
+    """
+    for record in flatten_results(results_all):
+        df, stack_488, stack_640 = load_triplet(record["folder"], record)
+        yield record["group"], record["label"], df, stack_488, stack_640
+ 
+ 
+def save_index(flat, path="experiment_index.json"):
+    import json
+    with open(path, "w") as f:
+        json.dump(flat, f, indent=2)
+ 
+ 
+def load_index(path="experiment_index.json"):
+    import json
+    with open(path) as f:
+        return json.load(f)
+
+def collect_analysis(results_all, filename, analysis_dir="./", key="analysis"):
+    """Attach each job's pickled output back onto results_all, matched by index.
+ 
+    Looks in <record["folder"]>/<analysis_dir>/<filename> for each experiment.
+ 
+    filename : str.format template, given idx/group/label, e.g.
+        "{idx}.pkl", "{group}_{label}.pkl", "{idx}_tracking.pkl"
+    key : name under which the loaded object is stored in results_all
+    """
+    import pickle
+ 
+    flat = flatten_results(results_all)
+    for idx, record in enumerate(flat):
+        pkl_path = Path(record["folder"]) / analysis_dir / filename.format(idx=idx, **record)
+        if not pkl_path.exists():
+            print(f"missing: {pkl_path} ({record['group']}/{record['label']})")
+            continue
+        with open(pkl_path, "rb") as f:
+            analysis = pickle.load(f)
+        results_all[record["group"]][record["label"]][key] = analysis
+    return results_all
+
+

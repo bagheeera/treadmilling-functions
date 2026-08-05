@@ -658,7 +658,37 @@ def pooled_diam_plot(D, prm, key, ax, overlay, vline_pos=None, mdcolor=None, nor
         axislabels=None,
     )
 
+def pooled_diam_plot_(key, ax, D, prm, overlay):
+    # Load time–radius data
+    D[key]["t_r"] = pd.read_pickle(D[key]["rundir"] + "/t_r.pkl")
 
+    # --- Pool seeds --------------------------------------------------------
+    mean_r, std_r, nseeds = fct.utils.key_pooling(
+        D, key,
+        lambda D, key: [v[1] for v in D[key]["t_r"]],
+        seeds=prm["seed"],
+        verbose=False,
+    )
+
+    # --- Assemble pooled data structures -----------------------------------
+    D["pooled"] = {}
+    D["pooled"]["t_r"] = [[t, r] for t, r in zip(
+        [v[0] for v in D[key]["t_r"]], mean_r)]
+    D["pooled"]["t_r_std"] = [[t, s] for t, s in zip(
+        [v[0] for v in D[key]["t_r"]], std_r)]
+
+    # --- Plot using your existing diameter plotter -------------------------
+    # arrt_value = dict(key)["arrt"]
+
+    fct.cylinder.diam_plot(
+        D,
+        "pooled",
+        ax,
+        overlay=overlay, axislabels=None,
+        plot_std=True, plot_coltharp=False,
+        plot_whitley=True, whitley_label=None,
+        vline_pos=dict(key)["arrt"]/60
+    )
 
 
 def render_clipping_movie(mesh, filename, cam_dict,
